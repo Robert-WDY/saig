@@ -54,7 +54,7 @@ function link(label, href, className = "") {
     return null;
   }
 }
-function paragraphs(parent, text = "") {
+function paragraphs(parent, text = "", notes = null) {
   for (const line of text.trim().split(/\r?\n/)) {
     if (!line.trim()) continue;
     const p = node("p", /^\s*第\d+天/.test(line) ? "route-snippet" : "");
@@ -64,6 +64,11 @@ function paragraphs(parent, text = "") {
       else if (/^https?:\/\//.test(token)) p.append(link(token, token) || document.createTextNode(token));
       else p.append(document.createTextNode(token));
     }
+    for (const number of (notes == null ? void 0 : notes.get(line.trim())) || []) {
+      const mark = button("footnote", "[" + number + "]", () => focusSource(parent.closest(".bubble"), number));
+      mark.setAttribute("aria-label", "查看第 " + number + " 条出处");
+      p.append(mark);
+    }
     parent.append(p);
   }
 }
@@ -72,6 +77,7 @@ function currentReply() {
   return (_a2 = lastWhere(state.messages, (message) => message.role === "assistant")) == null ? void 0 : _a2.result;
 }
 function showTab(tab, focus = false) {
+  setTimeout(drawBoardMap, 0);
   activeTab = tab;
   for (const [name, id] of [["plans", "plans-tab"], ["comparison", "comparison-tab"]]) {
     const selected = name === tab;
@@ -101,20 +107,51 @@ function viewDeliverable(delivery) {
     revealBoard("plans", id, delivery.replanned_days);
   }
 }
-function appendSources(parent, citations = []) {
-  const sources = /* @__PURE__ */ new Map();
+function sourceLabel(citation) {
+  const title = citation.title || "来源";
+  return /^\d+$/.test(String(citation.locator || "")) ? title + " · 第 " + citation.locator + " 页" : title + (citation.locator ? " · " + citation.locator : "");
+}
+function citationIndex(citations = []) {
+  const order = [], notes = /* @__PURE__ */ new Map();
   for (const citation of citations) {
-    const title = citation.title || "来源";
-    const label = citation.locator && /^\d+$/.test(citation.locator) ? title + " · 第" + citation.locator + "页" : title;
-    const a = link(label + " ↗", citation.source, "source");
-    if (a) sources.set(label + citation.source, a);
+    const key = sourceLabel(citation) + "|" + citation.source;
+    let number = order.findIndex((item) => item.key === key) + 1;
+    if (!number) {
+      order.push({ key, citation, quotes: [] });
+      number = order.length;
+    }
+    if (citation.quote && !order[number - 1].quotes.includes(citation.quote)) order[number - 1].quotes.push(citation.quote);
+    const claim = (citation.claim || "").trim();
+    if (claim) notes.set(claim, [.../* @__PURE__ */ new Set([...notes.get(claim) || [], number])]);
   }
-  if (!sources.size) return;
+  return { order, notes };
+}
+function appendSources(parent, index) {
+  if (!index.order.length) return;
   const details = node("details", "sources");
-  const list = node("div", "source-list");
-  list.append(...sources.values());
-  details.append(node("summary", "", "查看资料出处（" + sources.size + "）"), list);
+  const list = node("ol", "source-list");
+  for (const [i, item] of index.order.entries()) {
+    const row = node("li", "source-item");
+    row.dataset.source = String(i + 1);
+    row.append(node("b", "", "[" + (i + 1) + "]"));
+    const a = link(sourceLabel(item.citation) + " ↗", item.citation.source, "source");
+    row.append(a || node("span", "", sourceLabel(item.citation)));
+    if (item.quotes[0]) row.append(node("q", "", item.quotes[0].length > 90 ? item.quotes[0].slice(0, 90) + "…" : item.quotes[0]));
+    list.append(row);
+  }
+  details.append(node("summary", "", "资料出处 · " + index.order.length + " 条官方来源"), list);
   parent.append(details);
+}
+function focusSource(bubble, number) {
+  const details = bubble == null ? void 0 : bubble.querySelector(".sources");
+  if (!details) return;
+  details.open = true;
+  const row = details.querySelector('[data-source="' + number + '"]');
+  if (!row) return;
+  row.classList.remove("flash");
+  void row.offsetWidth;
+  row.classList.add("flash");
+  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 const topicLabels = {
   wuhan: "介绍武汉",
@@ -128,7 +165,8 @@ const topicLabels = {
 };
 function replyTopics(result) {
   const found = [];
-  if (Object.keys(result.days || {}).length || (result.deliverables || []).some((d) => d.cards)) found.push("旅游规划");
+  const planned = ["plan", "edit", "preview"].includes(result.mode) && (Object.keys(result.days || {}).length || Object.keys(result.preview || {}).length);
+  if (planned || (result.deliverables || []).some((d) => d.cards)) found.push("旅游规划");
   for (const step of result.trace || []) {
     const name = step.tool_name || (step.query !== void 0 ? step.tool : "");
     if (step.step === "answered_question" && !step.supported) continue;
@@ -144,6 +182,52 @@ function spokenReply(result) {
   const days = planSummary(result.answer);
   if (days.length) return "好的，行程排好啦。" + days.join("。") + "。每一站的时间和交通都在行程板上。";
   return (result.answer || "").split("\n").slice(0, 3).join("");
+}
+let showcase = null;
+fetch("/showcase").then((r) => r.ok ? r.json() : null).then((data) => {
+  showcase = data;
+  if (data) renderMessages();
+}).catch(() => {
+});
+function appendInfoCards(bubble, result) {
+  if (!showcase) return;
+  const topics = result.topics || [];
+  if (topics.includes("数命 SPU 社区")) {
+    const venue = showcase.venue, card = node("section", "info-card venue-card");
+    const pin = node("div", "venue-pin");
+    pin.setAttribute("aria-hidden", "true");
+    pin.append(node("span", "pin-dot"), node("span", "pin-ring"));
+    const copy = node("div", "venue-copy");
+    copy.append(node("small", "", "数命 SPU 社区 · 江岸会场"), node("strong", "", venue.place), node("p", "", venue.district));
+    const lines = node("div", "metro-list");
+    for (const station of venue.metro) {
+      const row = node("span", "metro");
+      row.append(node("b", "", "M"), node("span", "", station.name + " · " + station.lines));
+      lines.append(row);
+    }
+    copy.append(lines);
+    const actions = node("div", "info-actions");
+    const open = node("a", "text-button", "在武汉地图查看 →");
+    open.href = "/city?" + new URLSearchParams({ place: venue.place });
+    actions.append(open, node("small", "", venue.note));
+    copy.append(actions);
+    card.append(pin, copy);
+    bubble.append(card);
+  }
+  if (topics.includes("SAIG 大赛")) {
+    const card = node("section", "info-card timeline-card");
+    card.append(node("small", "", "SAIG 赛程 · " + showcase.checked));
+    const list = node("ol", "timeline");
+    for (const item of showcase.timeline) {
+      const row = node("li", item.highlight ? "now" : "");
+      row.append(node("time", "", item.date), node("span", "", item.text));
+      list.append(row);
+    }
+    card.append(list);
+    const source = link("以官网公告为准 ↗", showcase.source, "source-link");
+    if (source) card.append(source);
+    bubble.append(card);
+  }
 }
 function renderReply(bubble, result) {
   const deliveries = result.deliverables || [];
@@ -184,8 +268,10 @@ function renderReply(bubble, result) {
   } else {
     bubble.append(body);
   }
-  paragraphs(body, result.answer);
-  appendSources(bubble, result.citations);
+  const index = citationIndex(result.citations);
+  paragraphs(body, result.answer, index.notes);
+  appendInfoCards(bubble, result);
+  appendSources(bubble, index);
 }
 function renderMessages() {
   var _a2;
@@ -218,7 +304,11 @@ function renderMessages() {
       const mark = node("span", "receptionist-face");
       mark.setAttribute("aria-hidden", "true");
       entry.prepend(mark);
-      bubble.append(node("p", "working", "江豚接待员正在查资料…"));
+      bubble.append(node("p", "working", "江豚接待员正在处理…"));
+      const steps = node("ol", "work-steps");
+      steps.id = "work-steps";
+      for (const label of workPlan(state.pending.text)) steps.append(node("li", "", label));
+      bubble.append(steps);
     } else {
       bubble.append(node("p", "", state.pending.error || "这条消息还在等答复。"));
       bubble.append(button("chip", "重试发送", () => sendPending()));
@@ -229,29 +319,117 @@ function renderMessages() {
   messages.replaceChildren(fragment);
   chatWindow.scrollTop = chatWindow.scrollHeight;
 }
-function stopRow(name, time, leg, arrival = false, exact = "") {
-  const row = node("li", arrival ? "arrival" : "");
+const tripWords = /几天|[一两二三四五1-5]日|天游|行程|路线|排|规划|改|推迟|提前|出发|换成|加上|去掉|删掉/;
+function workPlan(text = "") {
+  return tripWords.test(text) ? ["理解行程要求", "挑选手册里的攻略", "计算站点间交通", "审核时间与约束"] : ["理解你的问题", "检索官方资料", "核对每条引文", "整理成答复"];
+}
+function tickSteps(elapsed) {
+  const items = document.querySelectorAll("#work-steps li");
+  const pace = [0, 1.2, 3.2, 6.5];
+  items.forEach((item, i) => {
+    const active = elapsed >= pace[i] && (i === items.length - 1 || elapsed < pace[i + 1]);
+    item.className = elapsed >= pace[i + 1] && i < items.length - 1 ? "done" : active ? "active" : "";
+  });
+}
+function typeReply() {
+  const entry = messages.querySelector(".message.assistant.reply-in:last-child") || [...messages.querySelectorAll(".message.assistant")].pop();
+  if (!entry || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const blocks = [...entry.querySelectorAll(".message-body > p, .summary-day span")].filter((el) => !el.closest("details:not([open])"));
+  const texts = blocks.map((block2) => {
+    const nodes = [...block2.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE);
+    return nodes.map((n) => {
+      const value = n.textContent;
+      n.textContent = "";
+      return [n, value];
+    });
+  });
+  const extras = entry.querySelectorAll(".info-card, .sources, .footnote, .plan-summary .delivery, .answer-detail");
+  extras.forEach((el) => el.classList.add("pending-reveal"));
+  const total = texts.flat().reduce((sum, [, value]) => sum + value.length, 0);
+  const perTick = Math.max(2, Math.ceil(total / 110));
+  let block = 0, part = 0, offset = 0;
+  const timer = setInterval(() => {
+    let budget = perTick;
+    while (budget > 0 && block < texts.length) {
+      const pieces = texts[block];
+      if (part >= pieces.length) {
+        block++;
+        part = 0;
+        continue;
+      }
+      const [n, value] = pieces[part];
+      const take = Math.min(budget, value.length - offset);
+      n.textContent += value.slice(offset, offset + take);
+      offset += take;
+      budget -= take;
+      if (offset >= value.length) {
+        part++;
+        offset = 0;
+      }
+    }
+    if (block >= texts.length) {
+      clearInterval(timer);
+      extras.forEach((el) => el.classList.remove("pending-reveal"));
+    }
+  }, 28);
+}
+function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
+  const row = node("li", (arrival ? "arrival" : "") + (change ? " changed " + change.kind : ""));
   const clock = node("time", "", time);
   if (exact) clock.title = "计划原值 " + exact;
-  row.append(clock, node("span", "", name));
+  if (change == null ? void 0 : change.oldTime) {
+    const was = node("del", "was", change.oldTime);
+    was.setAttribute("aria-label", "原为 " + change.oldTime);
+    clock.prepend(was);
+  }
+  const label = node("span", "", name);
+  if ((change == null ? void 0 : change.kind) === "added") label.append(node("em", "change-tag", "新增"));
+  if ((change == null ? void 0 : change.kind) === "moved") label.append(node("em", "change-tag", change.delta));
+  row.append(clock, label);
   if (leg) {
     const description = [modes[leg.mode], Number.isFinite(leg.minutes) ? routeTime.duration(leg.minutes) : "", leg.directions].filter(Boolean).join(" · ");
     row.append(node("span", "leg", description));
   }
   return row;
 }
-function daySection(number, day, open) {
-  var _a2, _b2, _c2, _d, _e;
-  const details = node("details", "day-card");
+function stopChange(stop, before, contract) {
+  var _a2;
+  if (!before) return null;
+  const old = (((_a2 = before.audit) == null ? void 0 : _a2.stops) || []).find((item) => item.place === stop.place);
+  if (!old) return { kind: "added" };
+  if (old.start === stop.start) return null;
+  const minutes = stop.start - old.start;
+  return {
+    kind: "moved",
+    oldTime: routeTime.stop(old, before.contract || contract),
+    delta: (minutes > 0 ? "推后 " : "提前 ") + routeTime.duration(Math.abs(minutes))
+  };
+}
+function daySection(number, day, open, before = null) {
+  var _a2, _b2, _c2, _d, _e, _f, _g;
+  const details = node("details", before ? "day-card has-changes" : "day-card");
   details.open = open;
   const stops = ((_a2 = day.audit) == null ? void 0 : _a2.stops) || [];
   const summary = node("summary", "", "第 " + number + " 天");
   summary.append(node("small", "", stops.length + " 站"));
+  if (before) summary.append(node("span", "changed-badge", "已更新"));
   const list = node("ol", "stops");
   const contract = day.contract || {};
   const legs = ((_b2 = day.audit) == null ? void 0 : _b2.legs) || [];
   if (contract.origin && contract.origin !== ((_c2 = stops[0]) == null ? void 0 : _c2.place)) {
-    list.append(stopRow(contract.origin + "出发", routeTime.exact(contract.start)));
+    const was = (_d = before == null ? void 0 : before.contract) == null ? void 0 : _d.start;
+    list.append(stopRow(
+      contract.origin + "出发",
+      routeTime.exact(contract.start),
+      null,
+      false,
+      "",
+      Number.isFinite(was) && was !== contract.start ? {
+        kind: "moved",
+        oldTime: routeTime.exact(was),
+        delta: (contract.start > was ? "推后 " : "提前 ") + routeTime.duration(Math.abs(contract.start - was))
+      } : null
+    ));
   }
   for (const stop of stops) {
     const leg = legs.find((item) => item.destination === stop.place && item.origin !== item.destination);
@@ -260,18 +438,21 @@ function daySection(number, day, open) {
       routeTime.stop(stop, contract),
       leg,
       false,
-      routeTime.exact(stop.start) + "–" + routeTime.exact(stop.end)
+      routeTime.exact(stop.start) + "–" + routeTime.exact(stop.end),
+      stopChange(stop, before, contract)
     ));
   }
+  const removed = (((_e = before == null ? void 0 : before.audit) == null ? void 0 : _e.stops) || []).filter((old) => !stops.some((stop) => stop.place === old.place));
+  if (removed.length) list.append(node("li", "removed", "已移除：" + removed.map((stop) => stop.place).join("、")));
   if (contract.destination) {
     const limit = contract.end - (contract.buffer || 0);
-    const arrival = routeTime.arrival((_d = day.audit) == null ? void 0 : _d.arrival, limit);
+    const arrival = routeTime.arrival((_f = day.audit) == null ? void 0 : _f.arrival, limit);
     list.append(stopRow(
       "预计抵达 " + contract.destination + " · 最晚 " + routeTime.exact(limit),
       arrival,
       lastWhere(legs, (item) => item.destination === contract.destination),
       true,
-      routeTime.exact((_e = day.audit) == null ? void 0 : _e.arrival)
+      routeTime.exact((_g = day.audit) == null ? void 0 : _g.arrival)
     ));
   }
   details.append(summary, list);
@@ -282,7 +463,7 @@ function daySection(number, day, open) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b2, _c2, _d, _e;
+  var _a2, _b2, _c2, _d, _e, _f, _g;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
@@ -319,11 +500,13 @@ function planCard(plan) {
     content.append(summary);
   }
   for (const [day, details] of Object.entries(plan.cards)) {
-    const section = daySection(day, details, day === openDay);
+    const before = ((_f = plan.changedDays) == null ? void 0 : _f.includes(day)) ? (_g = plan.previous) == null ? void 0 : _g[day] : null;
+    const section = daySection(day, details, day === openDay, before);
     section.addEventListener("toggle", () => {
       if (section.isConnected && section.open) {
         openDay = day;
         updateMapLink();
+        drawBoardMap();
       }
     });
     content.append(section);
@@ -382,8 +565,46 @@ function updateMapLink() {
   get("city-plan-link").href = url.replace("/routes", "/city");
   for (const link2 of [get("jump-map"), document.querySelector(".nav-map")]) link2.href = url;
 }
+let boardMap = null, boardLayer = null, routePoints = null, boardKey = "";
+async function drawBoardMap() {
+  var _a2, _b2, _c2, _d, _e;
+  const box = get("board-map");
+  const plan = state.plans.find((p) => p.id === selectedPlan);
+  const card = ((_a2 = plan == null ? void 0 : plan.cards) == null ? void 0 : _a2[openDay]) || plan && Object.values(plan.cards)[0];
+  if (!box || !card || activeTab !== "plans" || typeof WuhanMap === "undefined") {
+    if (box) box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const day = plan.cards[openDay] ? openDay : Object.keys(plan.cards)[0];
+  get("board-map-label").textContent = "第 " + day + " 天路线 · " + (((_c2 = (_b2 = card.audit) == null ? void 0 : _b2.stops) == null ? void 0 : _c2.length) || 0) + " 站";
+  get("board-map-open").href = "/city?" + new URLSearchParams({ plan: plan.id, day });
+  if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
+  if (!boardMap) {
+    boardMap = WuhanMap.create("board-map-canvas");
+    boardLayer = L.layerGroup().addTo(boardMap);
+  }
+  boardMap.invalidateSize();
+  const key = [plan.id, plan.version, day, (((_d = card.audit) == null ? void 0 : _d.stops) || []).map((s) => s.place + s.start).join()].join("|");
+  if (key === boardKey) return;
+  boardKey = key;
+  boardLayer.clearLayers();
+  const stops = WuhanMap.stops(card, routePoints).filter((stop) => stop.coords);
+  const svg = L.svg({ padding: 0.2 });
+  for (let i = 1; i < stops.length; i++) {
+    L.polyline([stops[i - 1].coords, stops[i].coords], { renderer: svg, interactive: false, color: "#fff8dd", weight: 7, opacity: 0.95 }).addTo(boardLayer);
+    const leg = L.polyline([stops[i - 1].coords, stops[i].coords], { renderer: svg, interactive: false, color: "#e8562d", weight: 3.5, className: "board-leg" }).addTo(boardLayer);
+    (_e = leg.getElement()) == null ? void 0 : _e.style.setProperty("--delay", i * 0.28 + "s");
+  }
+  stops.forEach((stop, i) => {
+    const icon = L.divIcon({ className: "atlas-step board-step", html: '<span style="animation-delay:' + i * 0.28 + 's">' + (i + 1) + "</span>", iconSize: [26, 26], iconAnchor: [13, 13] });
+    L.marker(stop.coords, { icon, title: i + 1 + " · " + stop.name, keyboard: false }).bindTooltip(stop.name + " · " + stop.time, { direction: "top", offset: [0, -12] }).addTo(boardLayer);
+  });
+  if (stops.length) boardMap.fitBounds(L.latLngBounds(stops.map((s) => s.coords)), { paddingTopLeft: [26, 26], paddingBottomRight: [26, 46], maxZoom: 14.2, animate: false });
+}
 function renderBoard() {
   updateMapLink();
+  drawBoardMap();
   get("board-summary").textContent = state.plans.length ? state.plans.length + " 份行程 · 可继续追问修改" : "查看路线和方案差异";
   const plans = get("plans");
   if (!state.plans.length) {
@@ -407,21 +628,35 @@ function renderBoard() {
   }
   get("save-comparison").hidden = activeTab !== "comparison" || !currentComparison();
 }
+function dayChanged(before, after) {
+  var _a2, _b2, _c2, _d;
+  if (!before || !after) return false;
+  const a = (((_a2 = before.audit) == null ? void 0 : _a2.stops) || []).map((s) => s.place + s.start).join(), b = (((_b2 = after.audit) == null ? void 0 : _b2.stops) || []).map((s) => s.place + s.start).join();
+  return a !== b || ((_c2 = before.audit) == null ? void 0 : _c2.arrival) !== ((_d = after.audit) == null ? void 0 : _d.arrival);
+}
 function putPlan(id, title, cards, version, replannedDays = [], beforeCounts = {}) {
   const index = state.plans.findIndex((plan2) => plan2.id === id);
-  const plan = { id, title, cards, version, replannedDays, beforeCounts };
+  const old = index < 0 ? null : state.plans[index];
+  const changed = old ? Object.keys(cards).filter((day) => {
+    var _a2;
+    return dayChanged((_a2 = old.cards) == null ? void 0 : _a2[day], cards[day]);
+  }) : [];
+  const previous = changed.length ? old.cards : (old == null ? void 0 : old.previous) || null;
+  const changedDays = changed.length ? changed : (old == null ? void 0 : old.changedDays) || [];
+  if (changed.length && !replannedDays.length) replannedDays = changed;
+  const plan = { id, title, cards, version: changed.length && version <= ((old == null ? void 0 : old.version) || 0) ? old.version + 1 : version, replannedDays, beforeCounts, previous, changedDays };
   if (index < 0) state.plans.push(plan);
   else state.plans[index] = plan;
 }
 function updateBoard(result) {
-  var _a2, _b2, _c2;
+  var _a2, _b2, _c2, _d;
   for (const item of result.deliverables || []) {
     if (item.kind === "compare") state.comparison = item;
     if (item.status !== "passed" || !item.cards || !item.option_id || !["plan", "revise"].includes(item.kind)) continue;
     const previous = state.plans.find((plan) => plan.id === item.option_id);
     const beforeCounts = (item.replanned_days || []).reduce((counts, day) => {
-      var _a3, _b3, _c3, _d;
-      counts[day] = (_d = (_c3 = (_b3 = (_a3 = previous == null ? void 0 : previous.cards) == null ? void 0 : _a3[day]) == null ? void 0 : _b3.audit) == null ? void 0 : _c3.stops) == null ? void 0 : _d.length;
+      var _a3, _b3, _c3, _d2;
+      counts[day] = (_d2 = (_c3 = (_b3 = (_a3 = previous == null ? void 0 : previous.cards) == null ? void 0 : _a3[day]) == null ? void 0 : _b3.audit) == null ? void 0 : _c3.stops) == null ? void 0 : _d2.length;
       return counts;
     }, {});
     putPlan(item.option_id, (previous == null ? void 0 : previous.title) || item.title, item.cards, item.version || 1, item.replanned_days, beforeCounts);
@@ -432,10 +667,15 @@ function updateBoard(result) {
   }
   if (Object.keys(result.days || {}).length && !((_b2 = result.deliverables) == null ? void 0 : _b2.some((item) => item.status === "passed" && item.option_id === "current"))) {
     putPlan("current", "正式行程", result.days, 1);
+    const current = state.plans.find((plan) => plan.id === "current");
+    if (((_c2 = current == null ? void 0 : current.replannedDays) == null ? void 0 : _c2.length) && current.previous) {
+      selectedPlan = "current";
+      openDay = String(current.replannedDays[0]);
+    }
   }
   if (Object.keys(result.preview || {}).length) putPlan("preview", "试排方案", result.preview, 1);
   if (result.mode === "plan" || result.mode === "edit") state.plans = state.plans.filter((plan) => plan.id !== "preview");
-  if ((_c2 = result.deliverables) == null ? void 0 : _c2.some((item) => item.kind === "adopt" && item.status === "passed")) {
+  if ((_d = result.deliverables) == null ? void 0 : _d.some((item) => item.kind === "adopt" && item.status === "passed")) {
     showTab("plans");
     selectedPlan = "current";
   }
@@ -499,9 +739,12 @@ async function sendPending() {
     Receptionist.set("thinking");
   }
   progress.textContent = "正在整理答复…";
+  tickSteps(0);
   const timer = setInterval(() => {
-    progress.textContent = "正在整理答复… " + Math.floor((performance.now() - start) / 1e3) + " 秒";
-  }, 1e3);
+    const elapsed = (performance.now() - start) / 1e3;
+    progress.textContent = "正在整理答复… " + Math.floor(elapsed) + " 秒";
+    tickSteps(elapsed);
+  }, 250);
   try {
     const response = await fetch("/chat", {
       method: "POST",
@@ -533,6 +776,7 @@ async function sendPending() {
     busy = false;
     save();
     render();
+    if (animateReply) typeReply();
     animateReply = false;
   }
 }

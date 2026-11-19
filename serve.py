@@ -182,6 +182,8 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 self.send_json(200,city_places())
             elif path=="/route-places":
                 self.send_json(200,editable_places())
+            elif path=="/showcase":
+                self.send_json(200,snapshot("showcase.json"))
             elif path=="/route-points":
                 self.send_json(200,{**snapshot("points.json"),**snapshot("road_network.json").get("anchors",{}),**snapshot("route_points.json")})
             else:

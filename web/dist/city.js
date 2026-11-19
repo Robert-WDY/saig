@@ -373,6 +373,11 @@ Promise.all([WuhanMap.readJSON("/city-places"), WuhanMap.readJSON("/route-points
   for (const id of ["district", "topic"]) for (const value of [...new Set(rows.map((r) => r[id]))].sort((a, b) => a.localeCompare(b, "zh-CN"))) el(id).append(new Option(value, value));
   fillPlaces();
   drawItinerary(true);
+  const place = rows.find((r) => r.name === requested.get("place") && r.point);
+  if (place) {
+    select(place);
+    map.setView(coords(place), 15, { animate: false });
+  }
 }).catch(() => {
   el("feedback").textContent = "地点资料暂未加载，请刷新页面。";
 });

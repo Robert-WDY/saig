@@ -84,16 +84,18 @@ const Receptionist = (() => {
     }, 230);
   }
   function say(text) {
-    const spoken = clean(text).slice(0, 260);
+    const spoken = clean(text).slice(0, 320);
     stop();
     if (!spoken) { set("happy"); return; }
     if (!voiceOn || !synth) { mime(spoken); return; }
     const utterance = new SpeechSynthesisUtterance(spoken);
-    utterance.lang = "zh-CN";
+    const latin = (spoken.match(/[A-Za-z]/g) || []).length > 3 * (spoken.match(/[\u4e00-\u9fff]/g) || []).length;
+    utterance.lang = latin ? "en-US" : "zh-CN";
     utterance.rate = 1.08;
     utterance.pitch = 1.18;
     chosenVoice = chosenVoice || pickVoice();
-    if (chosenVoice) utterance.voice = chosenVoice;
+    const voice = latin ? synth.getVoices().find(v => /^en(-|_)/i.test(v.lang)) : chosenVoice;
+    if (voice) utterance.voice = voice;
     let boundaries = false;
     utterance.onstart = () => {
       set("speaking");

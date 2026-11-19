@@ -3,7 +3,13 @@ import re
 from knowledge import TOOLS
 from semantics import arr,enum,obj,STRING
 
+def english(text):
+    """Visitors writing mostly Latin letters get English answers; citations stay verbatim Chinese."""
+    letters=re.findall(r"[A-Za-z]",text or "");han=re.findall(r"[\u4e00-\u9fff]",text or "")
+    return len(letters)>=12 and len(letters)>3*len(han)
+
 def answer_questions(model,kb,jobs,trace,original=None):
+    en=english(original or " ".join(j.get("query","") for j in jobs))
     searches={}
     candidates={}
     requested={}
@@ -45,7 +51,8 @@ def answer_questions(model,kb,jobs,trace,original=None):
             "可以准确介绍前者而不承诺后者。选择规划中的设施时必须表明尚处规划。每条答案只说一条可以由引文证明的事实或建议，并选一个允许的引文编号。"
             "介绍、概览、是什么、值得了解、怎么参加这类开放问题，同一问题要给3到5条答案，每条讲一个不同方面并引用不同引文（城市：地理格局、历史文化、美食、代表景点；社区：定位、资源、学习方式、地点；赛事：参赛资格、必交材料、选填材料、时间节点、入口），语气像热情的城市接待员，可以写成完整的两句话。只问单一具体事实时给一到两条。限定候选时选一个候选地点作答，并在回答中写出地名。能确定的先答，"
             "尚缺的时间、地址细节等不要猜。资料只给出街区或项目名称也可回答位置。只提问某个场地时应清楚选出它。"
-            "引文须支持同一主体、属性、范围。不要用泛泛介绍代替答复。采用同一事项最新的已核对公告，分别处理不同期限。无对应证据的问题不生成条目。一篇文章没有提及某事不能作为该事无规定的依据。",
+            "引文须支持同一主体、属性、范围。不要用泛泛介绍代替答复。采用同一事项最新的已核对公告，分别处理不同期限。无对应证据的问题不生成条目。一篇文章没有提及某事不能作为该事无规定的依据。"
+            +("游客用英文提问：给游客的回答必须用自然流畅的英文忠实转述引文，地名写拼音或通用英文名并在括号保留中文，例如 Yellow Crane Tower (黄鹤楼)。固定译名：SPU 全称 Super Person Unit（超级个体单元），数命 = Shuming，智民里 = Zhiminli，SAIG 不译。" if en else ""),
             {"游客原话":original,"问题":tasks,"每个问题应交付的取值类型":dict(zip(tasks,requested.values())),"若有限定必须从中选择":dict(zip(tasks,candidates.values())),
              "各题允许的引文":permitted,"引文":{i:{"标题":excerpts[i][0]["title"],"版本":excerpts[i][0]["edition"],"内容":excerpts[i][1]} for i in excerpts if i in allowed}},1600,obj({"答复":arr(row)}))
         for item in result["答复"]:
@@ -58,7 +65,7 @@ def answer_questions(model,kb,jobs,trace,original=None):
     approved=[]
     if proposals:
         packet={i:{"游客原话":original,"当前子问题":tasks[k],"所求取值类型":list(requested.values())[int(k)-1],"原文":quote,"回答":claim} for i,(k,doc,quote,claim) in proposals.items()}
-        decision=model.ask("一次审核所有候选答案。只有直接回答所问、地点范围与引文相符，且引文支持每项事实时才批准。"
+        decision=model.ask(("回答是英文译述，按语义与中文原文比对，忠实翻译视同支持。" if en else "")+"一次审核所有候选答案。只有直接回答所问、地点范围与引文相符，且引文支持每项事实时才批准。"
             "引用另一个地点的开放时间即使加上免责声明也不得批准。规划中的体验不能描述成已可进场，"
             "需要区分项目实战带教学员与公众参观设施。"
             "推荐某地点允许基于引文中明确的地点特征做有说明的主观建议；不能由日间信息推断夜间开放或费用。"
@@ -81,7 +88,8 @@ def answer_questions(model,kb,jobs,trace,original=None):
             parts.append(claim)
             citations.append({**{f:doc[f] for f in ("id","source","title","locator","edition")},"quote":quote,"claim":claim})
             selected.append(doc["id"])
-            if doc["id"]=="register":parts.append("官方报名入口："+doc["source"])
-        if not selected:parts.append(f"现有资料不足以确认「{q.strip('？?')}」，需要向相关方核实。")
+            if doc["id"]=="register":parts.append(("Official registration: " if en else "官方报名入口：")+doc["source"])
+        if not selected:parts.append(f"The official materials don't confirm \"{q.strip('？?')}\" yet; please check with the organisers." if en
+                                     else f"现有资料不足以确认「{q.strip('？?')}」，需要向相关方核实。")
         trace.append({"step":"answered_question","tool_name":name,"query":q,"supported":bool(selected),"sources":selected})
     return parts,citations

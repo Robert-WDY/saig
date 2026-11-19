@@ -7,11 +7,14 @@
   <title>武汉接线台 · 数命 SPU 城市 AI 接待员</title>
   <link rel="icon" type="image/png" href="/web/icon.png">
   <link rel="preload" as="image" href="/web/porpoise.webp">
+  <link rel="stylesheet" href="/web/vendor/leaflet.css">
   <link rel="stylesheet" href="/web/style.css">
   <script src="/web/avatar.js" defer></script>
   <script src="/web/poster.js" defer></script>
   <script src="/web/compat.js" defer></script>
   <script src="/web/route-time.js" defer></script>
+  <script src="/web/vendor/leaflet.js" defer></script>
+  <script src="/web/wuhan-map.js" defer></script>
   <script src="/web/chat.js" defer></script>
 </head>
 <body>
@@ -68,6 +71,7 @@
               <button type="button" class="starter chip" data-prompt="早上在汉口过早，有哪些武汉特色早点？">汉口过早吃什么</button>
               <button type="button" class="starter chip" data-prompt="数命 SPU 社区在武汉的会场在哪里？坐地铁怎么去？">社区会场怎么去</button>
               <button type="button" class="starter chip" data-prompt="SAIG 的人气榜怎么统计？点赞什么时候截止？">人气榜怎么算</button>
+              <button type="button" class="starter chip" data-prompt="I'm visiting Wuhan for the first time. What should I know about the city?">Ask in English</button>
             </div>
           </div>
           <div id="messages" role="log" aria-label="游客与接待员的消息" aria-live="polite"></div>
@@ -98,6 +102,10 @@
         <div class="tabs" aria-label="行程板视图" role="tablist">
           <button id="plans-tab" type="button" role="tab" aria-controls="plans" aria-selected="true" tabindex="0">行程</button>
           <button id="comparison-tab" type="button" role="tab" aria-controls="comparison" aria-selected="false" tabindex="-1">比较</button>
+        </div>
+        <div id="board-map" class="board-map" hidden>
+          <div id="board-map-canvas" aria-label="当天游览路线地图"></div>
+          <div class="board-map-bar"><strong id="board-map-label"></strong><a id="board-map-open" href="/city">在武汉地图展开 ↗</a></div>
         </div>
         <div id="plans" class="board-content" role="tabpanel" aria-labelledby="plans-tab" tabindex="0"></div>
         <div id="comparison" class="board-content" role="tabpanel" aria-labelledby="comparison-tab" tabindex="0" hidden></div>
