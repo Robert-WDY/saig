@@ -17,7 +17,8 @@ from model import ModelError, deepseek_key
 from urllib.parse import urlsplit
 import requests
 from agent import Agent
-from knowledge import TOOLS, grounded
+from knowledge import DATA, Knowledge, TOOLS, grounded
+from copy import copy
 from storage import Conflict
 from diagnostics import capture,timed
 from transport import snapshot
@@ -50,8 +51,29 @@ def static_file(filename, media, mtime, compressed):
     return data, '"' + hashlib.sha256(data).hexdigest() + '"'
 
 
+class ReviewedSources:
+    """Each turn keeps one consistent version, even if the source changes mid-turn."""
+    def __init__(self, agent, path):
+        self.agent = agent
+        self.path = path
+        self.lock = Lock()
+
+    def current(self):
+        with self.lock:
+            try:
+                rows = json.loads(self.path.read_bytes())
+                if rows != self.agent.kb.curated:
+                    revised = copy(self.agent)
+                    revised.kb = Knowledge(curated=rows)
+                    self.agent = revised
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                raise ModelError("资料更新待核验") from exc
+            return self.agent
+
+
 def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
     hosts = {h.lower() for h in hosts} if hosts else None
+    sources = ReviewedSources(agent, DATA/"official.json") if isinstance(agent.kb, Knowledge) else None
     session_locks = [Lock() for _ in range(97)]
     probe_lock = Lock()
     probe = {"next":0, "ok":False}
@@ -165,6 +187,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 agent.store.charge(internal,session_cap,day_cap)
                 attempts+=1
             try:
+                current = sources.current() if sources and self.path!="/session/delete" else agent
                 with turn_budget(charge):
                     if self.path=="/session/delete":
                         agent.store.delete(internal)
@@ -172,13 +195,13 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                     elif self.path=="/chat":
                         debug=not invite and body.get("diagnostics") is True
                         with capture(debug) as events,timed("chat"):
-                            result={**agent.respond(internal,q,req),"session":sid,"request_id":req}
+                            result={**current.respond(internal,q,req),"session":sid,"request_id":req}
                         if debug:result["events"]=events
                         if invite:
                             result.pop("trace",None)
                             result.pop("facts",None)
                     else:
-                        rows=agent.tool(body["tool"],q)
+                        rows=current.tool(body["tool"],q)
                         result=rows if self.path=="/tool" else grounded(agent.model,q,rows)
                 self.send_json(200,result)
             except CapacityError as exc:self.send_json(429,{"error":str(exc)})

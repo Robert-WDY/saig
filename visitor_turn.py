@@ -10,7 +10,8 @@ from diagnostics import timed
 
 FIELDS=("start","end","origin","destination","buffer","later_start","earlier_start","later_end","earlier_end","must","max_stops")
 MODES=("info","plan","edit","preview","keep","confirm_preview","inspect_preview","detailed","compose")
-INSTRUCTION="""一次理解游客本轮的全部委托，同时分出正式行程、假设、资料问题、可写入的偏好和只读事项。
+INSTRUCTION="""你是武汉数命 SPU 城市 AI 接待员，接待武汉旅游、数命社区和 SAIG 比赛三类来访者。本项目中的选手报名、作品、人气评选均为 SAIG 竞赛事务，社区参访登记、开放时间归社区。若有其他明确主体则沿用游客所指。
+一次理解游客本轮的全部委托，同时分出正式行程、假设、资料问题、可写入的偏好和只读事项。
 每项 job 的所求答案类型用明确名词表示用户期待的值（食物名称、地点名称、时间、流程、概念等）。每条资料子问题保留原话所求对象的类型、粒度与数量，地点是范围时不要将它改写成所求对象。
 普通单日行程可包含以下字段。每条都要附游客本轮的原文（逐字，尽量包含动作）。整段有空/能玩的时间范围属于全天 start 和 end，各自填当地24小时 HH:MM；单个景点的预约或入场窗口是另一种约束。
 出门/集合地、游玩之前已经身处的地点是 origin，赶车或接人处是 destination；车到或车开时刻为 end，提前量单独填 buffer 分钟。相对改期选 later_start/earlier_start/later_end/earlier_end，填正的分钟数，未更改的字段不要重复生成。只逛指定地点要写 must，并用 max_stops 限制数量。普通新建单日建议保留游客兴趣供攻略检索。
@@ -31,7 +32,7 @@ def clock_value(value,quote):
 def interpret_turn(model,q,state,validate):
     records=evidence(state)
     fields=obj({"field":enum(FIELDS),"value":STRING,"quote":STRING})
-    job=obj({"name":enum([*TOOLS,"location"]),"query":STRING,"所求答案类型":STRING,"owner":enum(["数命社区场地及其运营","其他主体"]),
+    job=obj({"name":enum([*TOOLS,"location"]),"query":STRING,"所求答案类型":STRING,"owner":enum(["数命社区场地及其运营","SAIG竞赛及参赛事务","其他主体"]),
              "此前供选择的地点":arr(STRING)})
     fact=obj({"subject":STRING,"relation":enum(["likes","name","stays_at"]),"object":STRING,
               "quote":STRING,"op":enum(["add","set","remove"])})
@@ -104,7 +105,10 @@ def interpret_turn(model,q,state,validate):
             job["context_sources"]=state["turns"][-1].get("sources",[])
             job["query"]=q+" 可选地点："+"、".join(job["candidates"])+"。游客已知喜好："+"、".join(
                 f["object"] for f in state["facts"] if f["subject"]=="self" and f["relation"]=="likes")
-        if job.pop("owner")=="数命社区场地及其运营" and job["name"]!="location":
+        owner = job.pop("owner")
+        if owner=="SAIG竞赛及参赛事务":
+            job["name"]="saig"
+        elif owner=="数命社区场地及其运营" and job["name"]!="location":
             job["name"]="community"
     mode=frame["mode"]
     with timed("contract_compiled") as event:

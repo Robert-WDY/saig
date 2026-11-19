@@ -15,7 +15,8 @@ from knowledge import _verify_statement
 from limits import CapacityError, charge_attempt, turn_budget
 from model import Model, ModelError
 from semantics import compile_day
-from serve import handler
+from serve import handler, ReviewedSources
+from knowledge import Knowledge, DATA
 from storage import Sessions
 from visitor_turn import interpret_turn
 
@@ -69,6 +70,25 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(requests.ReadTimeout):
             model.ask("q",{})
         self.assertEqual(session.post.call_count,3)
+
+    def test_rule_update_swaps_index_for_next_request_only(self):
+        path=Path(self.tmp.name)/"official.json"
+        old=json.loads((DATA/"official.json").read_text("utf8"))
+        path.write_text(json.dumps(old),encoding="utf8")
+        agent=Mock()
+        agent.kb=Knowledge(curated=old)
+        sources=ReviewedSources(agent,path)
+        first=sources.current()
+        updated=json.loads(path.read_text("utf8"))
+        row=next(r for r in updated if r["id"]=="deadline")
+        row.update(text="测试公告：报名截止 11 月 25 日，点赞截止仍为 11 月 20 日。",edition="模拟新公告")
+        path.write_text(json.dumps(updated),encoding="utf8")
+        second=sources.current()
+        self.assertNotEqual(first.kb.by_id["deadline"]["edition"],second.kb.by_id["deadline"]["edition"])
+        hit=second.kb.search("报名截止",["saig"],5)
+        self.assertTrue(any(r["edition"]=="模拟新公告" and "11 月 20 日" in r["text"] for r in hit))
+        path.write_text("{",encoding="utf8")
+        with self.assertRaises(ModelError):sources.current()
 
     def test_contract_and_citation_checks_without_network(self):
         model=Mock()

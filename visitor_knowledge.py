@@ -25,8 +25,9 @@ def answer_questions(model,kb,jobs,trace,original=None):
     pools=dict(zip(tasks,searches.values()))
     docs={d["id"]:d for rows in pools.values() for d in rows.values()}
     excerpts={}
+    reviewed={d["id"] for d in kb.curated}
     for doc in docs.values():
-        sentences=re.findall(r"[^。！？\n]+[。！？]?",doc["text"][:1200])
+        sentences=[doc["text"]] if doc["id"] in reviewed else re.findall(r"[^。！？\n]+[。！？]?",doc["text"][:1200])
         for j,sentence in enumerate(sentences):
             excerpt=sentence.strip()
             if excerpt:excerpts[f"{doc['id']}#{j}"]=(doc,excerpt)
@@ -43,9 +44,9 @@ def answer_questions(model,kb,jobs,trace,original=None):
             "先辨认问题索取的是哪个字段和哪一类实例，在答复中明确给出该类型的具体值。只介绍与之有关的位置或背景无法交付所求实例。每项问题至少检查一次，选择最直接的引文。访问者询问能学什么时，区分资料记载的培养方式和无需预约即可参加的活动；"
             "可以准确介绍前者而不承诺后者。选择规划中的设施时必须表明尚处规划。每条答案只说一条可以由引文证明的事实或建议，并选一个允许的引文编号。限定候选时选一个候选地点作答，并在回答中写出地名。能确定的先答，"
             "尚缺的时间、地址细节等不要猜。资料只给出街区或项目名称也可回答位置。只提问某个场地时应清楚选出它。"
-            "引文须支持同一主体、属性、范围。不要用泛泛介绍代替答复。无对应证据的问题不生成条目。",
+            "引文须支持同一主体、属性、范围。不要用泛泛介绍代替答复。采用同一事项最新的已核对公告，分别处理不同期限。无对应证据的问题不生成条目。一篇文章没有提及某事不能作为该事无规定的依据。",
             {"游客原话":original,"问题":tasks,"每个问题应交付的取值类型":dict(zip(tasks,requested.values())),"若有限定必须从中选择":dict(zip(tasks,candidates.values())),
-             "各题允许的引文":permitted,"引文":{i:excerpts[i][1] for i in excerpts if i in allowed}},950,obj({"答复":arr(row)}))
+             "各题允许的引文":permitted,"引文":{i:{"标题":excerpts[i][0]["title"],"版本":excerpts[i][0]["edition"],"内容":excerpts[i][1]} for i in excerpts if i in allowed}},950,obj({"答复":arr(row)}))
         for item in result["答复"]:
             k=item["问题编号"]; source=item["引文编号"]
             if source not in permitted[k]:continue

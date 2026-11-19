@@ -34,8 +34,8 @@ def tokens(text):
 
 
 class Knowledge:
-    def __init__(self):
-        self.curated = json.loads((DATA/"official.json").read_text(encoding="utf8"))
+    def __init__(self, curated=None):
+        self.curated = curated if curated is not None else json.loads((DATA/"official.json").read_text(encoding="utf8"))
         self.rows = list(self.curated)
         self.rows.extend(json.loads(s) for s in (DATA/"handbooks.jsonl").read_text(encoding="utf8").splitlines())
         from trip_contract import GUIDES,CITY_SOURCE
