@@ -1,13 +1,13 @@
 const {browser}=require("./browser.cjs");
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
-const {join}=require("node:path");
+const {join,resolve}=require("node:path");
 browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
     await cdp("Page.addScriptToEvaluateOnNewDocument",{source:"Crypto.prototype.randomUUID=undefined;Array.prototype.findLast=undefined;Object.hasOwn=undefined;AbortSignal.timeout=undefined;"});
     if(process.env.SAIG_LEGACY) await cdp("Page.addScriptToEvaluateOnNewDocument",{source:"HTMLDialogElement.prototype.showModal=undefined;window.confirm=()=>true;"});
     await size(1440,960);
     await cdp("Page.navigate",{url:base});
-    await wait(()=>js("document.querySelector('.connection.online') && document.querySelector('.hero img').naturalWidth"),20000);
+    await wait(()=>js("document.querySelector('.connection.online') && document.querySelector('.stage-art img').naturalWidth && document.querySelector('.porpoise img')"),20000);
     const desktop=await js("({width:document.documentElement.clientWidth, scroll:document.documentElement.scrollWidth, title:document.title})");
     assert.equal(desktop.width,desktop.scroll);
     await shot("01-首页");
@@ -32,12 +32,19 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
       console.log(response.question,response.elapsed_ms,response.sources,response.deliverables ?? "");
       return result;
     }
-    const introduction=await turn([".starter","认识武汉"]);
-    assert.match(introduction.answer,/热干面|豆皮|面窝/);
-    for (const district of ["汉口","汉阳","武昌"]) assert.ok(introduction.answer.includes(district));
+    const introduction=await turn([".skill","介绍武汉"]);
+    // Function 1: several cited points, tagged, with numbered footnotes that open their source.
+    assert.ok(introduction.answer.split("\n").filter(Boolean).length>=3);
+    assert.ok(introduction.citations.length>=2);
+    assert.ok(introduction.topics.includes("介绍武汉"));
+    assert.ok(await js("document.querySelectorAll('.message.assistant:last-child .footnote').length>=2"));
+    await js("document.querySelector('.message.assistant:last-child .footnote').click()");
+    assert.ok(await js("document.querySelector('.message.assistant:last-child .sources').open"));
     const plans=await turn(["#followups button","规划并比较行程"],true);
     assert.equal(plans.deliverables.filter(d=>d.kind==="plan"&&d.status==="passed").length,2);
     assert.ok(plans.deliverables.some(d=>d.kind==="compare"&&d.status==="passed"));
+    // Function 3: the open day's route is drawn in the trip board.
+    await wait(()=>js("!document.querySelector('#board-map').hidden && document.querySelectorAll('#board-map .board-step').length>=2"),10000);
     const revision=await turn(["#followups button","调整两日游"],true);
     const changed=revision.deliverables.find(d=>d.kind==="revise"&&d.status==="passed");
     assert.deepEqual(changed.replanned_days,[2]);
@@ -46,6 +53,7 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
     assert.match(await js("document.querySelector('#plans').innerText"),/本轮更新第 2 天/);
     assert.match(await js("document.querySelector('#plans').innerText"),/汉口站/);
     assert.match(await js("document.querySelector('#plans').innerText"),/\d+ 站 → \d+ 站/);
+    assert.ok(await js("document.querySelector('.day-card.has-changes .changed-badge') !== null"));
     const show = revision.deliverables.find(d=>d.kind==="show"&&d.status==="passed");
     if (show) {
       await js("Array.from(document.querySelectorAll('.delivery')).reverse().find(el=>el.textContent.includes(" + JSON.stringify(show.title) + ")).click()");
@@ -68,10 +76,27 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
     const community=await turn(["#followups button","问数命"],true);
     assert.match(community.answer,/智民里/);
     assert.match(community.answer,/真实订单|项目实战/);
+    assert.ok(await js("document.querySelector('.message.assistant:last-child .venue-card') !== null"));
     const contest=await turn(["#followups button","问 SAIG"],true);
     assert.match(contest.answer,/项目简介/);
     assert.match(contest.answer,/演示视频/);
     assert.match(contest.answer,/超级个体|Super Person Unit/);
+    assert.ok(await js("document.querySelectorAll('.message.assistant:last-child .timeline li').length>=4"));
+
+    // Expanding the city map keeps the visitor's view (no jump back to the main city).
+    const home=await js("location.href");
+    await cdp("Page.navigate",{url:new URL("/city",base).href});
+    await wait(()=>js("typeof map==='object' && document.querySelectorAll('.atlas-pin').length>0"),15000);
+    await js("document.querySelector('#overview').click()");
+    const overviewZoom=await js("map.getZoom()");
+    await js("document.querySelector('#expand').click()");
+    await sleep(300);
+    // The larger canvas may raise the fit-the-city minimum slightly; the view must stay on the whole city.
+    assert.ok(Math.abs(await js("map.getZoom()")-overviewZoom)<.5);
+    assert.ok(await js("map.getBounds().contains([31.30055,114.210498])"));
+    await js("document.querySelector('#expand').click()");
+    await cdp("Page.navigate",{url:home});
+    await wait(()=>js("document.querySelectorAll('.message.assistant').length===5"),10000);
 
     const mapUrl=await js("document.querySelector('#jump-map').href");
     assert.match(mapUrl,/\/routes\?/);

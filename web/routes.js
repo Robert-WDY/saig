@@ -90,9 +90,11 @@ function toggleExpanded() {
   const btn = get("expand-map");
   btn.textContent = on ? "收起大图" : "展开大图";
   btn.setAttribute("aria-pressed", String(on));
+  const center = map.getCenter(), zoom = map.getZoom();
   requestAnimationFrame(() => {
-    map.invalidateSize();
-    if (rows.length) fitRoute();
+    // Keep the visitor's current view; only the container size changes.
+    map.invalidateSize({pan: false});
+    map.setView(center, zoom, {animate: false});
     btn.focus();
   });
 }

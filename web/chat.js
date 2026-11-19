@@ -166,6 +166,7 @@ function focusSource(bubble, number) {
 const topicLabels = {wuhan: "介绍武汉", attraction: "武汉景点", food: "武汉美食", community: "数命 SPU 社区",
   spu: "数命 SPU", saig: "SAIG 大赛", guide: "旅游规划", location: "位置"};
 function replyTopics(result) {
+  if (Array.isArray(result.topics)) return result.topics.slice(0, 3);
   const found = [];
   const planned = ["plan", "edit", "preview"].includes(result.mode) && (Object.keys(result.days || {}).length || Object.keys(result.preview || {}).length);
   if (planned || (result.deliverables || []).some(d => d.cards)) found.push("旅游规划");
@@ -675,8 +676,8 @@ function renderFollowups() {
     el.append(button("chip", "调整两日游第 2 天 ↗", () => fill("两日游第二天想轻松点，下午四点要到汉口站。一日游照旧，再帮我比较一下。")));
   }
   el.append(
-    button("chip", "问数命 SPU 社区 ↗", () => fill(document.querySelector(".starter[data-prompt*='带教'], .starter[data-prompt*='项目经验']").dataset.prompt)),
-    button("chip", "问 SAIG 参赛 ↗", () => fill(document.querySelector(".starter[data-prompt*='线上赛']").dataset.prompt))
+    button("chip", "问数命 SPU 社区 ↗", () => fill(document.querySelector(".skill[data-skill='community']").dataset.prompt)),
+    button("chip", "问 SAIG 参赛 ↗", () => fill(document.querySelector(".skill[data-skill='saig']").dataset.prompt))
   );
 }
 

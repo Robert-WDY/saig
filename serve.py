@@ -64,6 +64,21 @@ for tile in (WEB_DIR / "island").glob("*.svg"):
     WEB_ASSETS["/web/island/"+tile.name] = ("island/"+tile.name,"image/svg+xml")
 
 
+TOPIC_LABELS={"wuhan":"介绍武汉","attraction":"武汉景点","food":"武汉美食","community":"数命 SPU 社区",
+              "spu":"数命 SPU","saig":"SAIG 大赛","guide":"旅游规划","location":"位置"}
+def reply_topics(result):
+    """Label which contest function answered; computed before the public build drops the trace."""
+    found=[]
+    planned=result.get("mode") in ("plan","edit","preview") and (result.get("days") or result.get("preview"))
+    if planned or any(d.get("cards") for d in result.get("deliverables") or []):found.append("旅游规划")
+    for step in result.get("trace") or []:
+        if step.get("step")=="answered_question" and not step.get("supported"):continue
+        name=step.get("tool_name") or (step.get("tool") if "query" in step else "")
+        label=TOPIC_LABELS.get(name)
+        if label and label not in found:found.append(label)
+    return found[:3]
+
+
 @lru_cache(maxsize=100)
 def static_file(filename, media, mtime, compressed, header_mtime=0):
     data = (WEB_DIR / filename).read_bytes()
@@ -222,8 +237,8 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
             def charge():
                 nonlocal attempts
                 if attempts>=32:raise CapacityError("本轮达到模型调用上限，请拆分问题。")
-                # Daily caps count visitor turns, not the model calls inside one turn.
-                if not attempts:agent.store.charge(internal,session_cap,day_cap)
+                # Every real upstream request, retries included, is charged atomically to the session and the site.
+                agent.store.charge(internal,session_cap,day_cap)
                 attempts+=1
             try:
                 current = sources.current() if sources and self.path!="/session/delete" else agent
@@ -243,6 +258,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                         with capture(debug) as events,timed("chat"):
                             result={**current.respond(internal,q,req),"session":sid,"request_id":req}
                         if debug:result["events"]=events
+                        result["topics"]=reply_topics(result)
                         if invite:
                             result.pop("trace",None)
                             result.pop("facts",None)
@@ -305,5 +321,5 @@ if __name__=="__main__":
         if len(invite)<24 or not hosts:p.error("对外监听需要明确 --allowed-host 和至少 24 字符的 SAIG_INVITE")
     else:hosts={f"localhost:{args.port}",f"127.0.0.1:{args.port}"}
     agent=Agent(args.db)
-    api=handler(agent,hosts,invite,int(os.getenv("SAIG_SESSION_CAP","60")),int(os.getenv("SAIG_DAY_CAP","300")))
+    api=handler(agent,hosts,invite,int(os.getenv("SAIG_SESSION_CAP","400")),int(os.getenv("SAIG_DAY_CAP","3000")))
     Server((args.host,args.port),api,agent.store).serve_forever()

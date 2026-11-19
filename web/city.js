@@ -38,7 +38,13 @@ function expand(active) {
   el("atlas-map").parentElement.classList.toggle("expanded",active);
   el("expand").setAttribute("aria-pressed",String(active));
   el("expand").textContent=active?"收起大图":"展开大图";
-  map.invalidateSize();if(routeFramed)fitItinerary();else fit();
+  keepView();
+}
+// Resizing the map keeps whatever the visitor is looking at; only the itinerary view re-frames itself.
+function keepView(){
+  const center=map.getCenter(),zoom=map.getZoom();
+  map.invalidateSize({pan:false});
+  if(routeFramed)fitItinerary();else map.setView(center,zoom,{animate:false});
 }
 function renderPins() {
   pins.clearLayers();
@@ -220,7 +226,7 @@ el("atlas-day").onchange=()=>{clearReceipt();renderChoice();drawItinerary(true);
 map.on("zoomend",renderPins);
 window.addEventListener("pageshow",e=>{if(e.persisted)location.reload();});
 let previousWidth=window.innerWidth;
-window.addEventListener("resize",()=>{map.invalidateSize();if(window.innerWidth!==previousWidth){previousWidth=window.innerWidth;if(routeFramed)fitItinerary();else fit();}});
+window.addEventListener("resize",()=>{if(window.innerWidth!==previousWidth){previousWidth=window.innerWidth;keepView();}else map.invalidateSize({pan:false});});
 const requested=new URLSearchParams(location.search);
 const requestedPlan=workspace.plans.find(p=>p.id===requested.get("plan"));
 fillPlans(requestedPlan?.id||workspace.mapSelection?.plan,requestedPlan?requested.get("day"):workspace.mapSelection?.day);

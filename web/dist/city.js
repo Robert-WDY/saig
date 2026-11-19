@@ -53,9 +53,13 @@ function expand(active) {
   el("atlas-map").parentElement.classList.toggle("expanded", active);
   el("expand").setAttribute("aria-pressed", String(active));
   el("expand").textContent = active ? "收起大图" : "展开大图";
-  map.invalidateSize();
+  keepView();
+}
+function keepView() {
+  const center = map.getCenter(), zoom = map.getZoom();
+  map.invalidateSize({ pan: false });
   if (routeFramed) fitItinerary();
-  else fit();
+  else map.setView(center, zoom, { animate: false });
 }
 function renderPins() {
   pins.clearLayers();
@@ -356,12 +360,10 @@ window.addEventListener("pageshow", (e) => {
 });
 let previousWidth = window.innerWidth;
 window.addEventListener("resize", () => {
-  map.invalidateSize();
   if (window.innerWidth !== previousWidth) {
     previousWidth = window.innerWidth;
-    if (routeFramed) fitItinerary();
-    else fit();
-  }
+    keepView();
+  } else map.invalidateSize({ pan: false });
 });
 const requested = new URLSearchParams(location.search);
 const requestedPlan = workspace.plans.find((p) => p.id === requested.get("plan"));

@@ -67,11 +67,13 @@ const Receptionist = (() => {
   if (synth) synth.addEventListener?.("voiceschanged", () => { chosenVoice = pickVoice(); });
 
   function clean(text) {
+    const latinText = (String(text || "").match(/[A-Za-z]/g) || []).length > 3 * (String(text || "").match(/[\u4e00-\u9fff]/g) || []).length;
     return String(text || "")
       .replace(/https?:\/\/\S+/g, "")
-      .replace(/[（(][^）)]{0,40}[)）]/g, "")
-      .replace(/\b(\d{1,2}):(\d{2})/g, (_, h, m) => Number(h) + "点" + (m === "00" ? "" : m === "30" ? "半" : Number(m) + "分"))
-      .replace(/[→]/g, "，").replace(/[·•]/g, "，").replace(/\s+/g, " ").trim();
+      .replace(/[（(]([^）)]{0,40})[)）]/g, (_, inner) => latinText && /[\u4e00-\u9fff]/.test(inner) && !/[A-Za-z]/.test(inner) ? "" : "，" + inner + "，")
+      .replace(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?/g, (all, h, m, sec) => latinText ? all :
+        Number(h) + "点" + (m === "00" ? "" : m === "30" && !sec ? "半" : Number(m) + "分") + (sec && sec !== "00" ? Number(sec) + "秒" : ""))
+      .replace(/[→]/g, "，").replace(/[·•]/g, "，").replace(/\s+/g, " ").replace(/[，,]\s*([。！？，,；])/g, "$1").replace(/\s+([。！？，,])/g, "$1").trim();
   }
   // Pretend to talk for a time proportional to the text when the voice is off or unavailable.
   function mime(text) {

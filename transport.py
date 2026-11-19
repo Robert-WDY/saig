@@ -113,7 +113,7 @@ def straight_km(a,b):
     x=(q["lon"]-p["lon"])*cos(radians((p["lat"]+q["lat"])/2))
     return 111.2*hypot(x,q["lat"]-p["lat"])
 
-def choose(a,b,mobility,minute,cache):
+def choose(a,b,mobility,minute,cache,strict=False):
     v=settings(mobility)
     people=v.get("人数")
     allowed=set(v.get("交通方式","walk,metro,transit,taxi").split(","))
@@ -131,11 +131,12 @@ def choose(a,b,mobility,minute,cache):
                          group_fare=0,fare_bound=0,source="OSRM 步行路网，地图参考点",directions="沿步行路网前往"))
     else:
         km=straight_km(a,b)
-        if km is not None and km<=1.5:
+        same_block=PLACES.get(a,{}).get("zone") is not None and PLACES.get(a,{}).get("zone")==PLACES.get(b,{}).get("zone")
+        if km is not None and km<=1.5 and same_block:
             # Neighbouring stops in one historic block: budget a winding walk from map reference points.
             metres=round(km*1350)
             rows.append(dict(mode="walk",minutes=max(3,ceil(metres/65)),walk_m=metres,changes=0,group_fare=0,fare_bound=0,
-                             source="地图参考点直线距离×1.35 估算",directions="相邻街区步行，按距离估算"))
+                             source="地图参考点直线距离×1.35 估算",directions="相邻街区步行，按距离估算",estimated=True))
     if "taxi" in obs:
         metres,mins,_=obs["taxi"]
         km=metres/1000
@@ -162,7 +163,8 @@ def choose(a,b,mobility,minute,cache):
     feasible=[]
     for row in rows:
         if row["mode"] not in allowed:continue
-        if cap is not None and (row["walk_m"] is None or row["walk_m"]>cap):continue
+        # A straight-line estimate is not a walkable path, so it cannot prove a hard walking cap.
+        if cap is not None and (row["walk_m"] is None or row["walk_m"]>cap or row.get("estimated")):continue
         if budget is not None and (row["fare_bound"] is None or row["fare_bound"]>budget):continue
         feasible.append(row)
     if not feasible:
@@ -181,10 +183,11 @@ def choose(a,b,mobility,minute,cache):
         if pref=="cheap":return (row["group_fare"] if row["group_fare"] is not None else inf,row["minutes"])
         if pref=="fewer_changes":return (row["changes"],row["minutes"])
         if pref in ("metro","walk","taxi"):
-            if pref=="metro" and row["mode"]=="walk" and (row["walk_m"]<=800 or row["minutes"]<=20):
+            if pref=="metro" and row["mode"]=="walk" and (row["walk_m"]<=800 or (row["minutes"]<=20 and not strict)):
                 return (False,row["minutes"])
             return (row["mode"]!=pref,row["minutes"])
         # Visitors walk short hops instead of waiting for a taxi or changing metro lines.
+        if strict:return (row["minutes"],)
         return (not(row["mode"]=="walk" and row["minutes"]<=20),row["minutes"])
     best=min(feasible,key=rank)
     result=dict(origin=a,destination=b,**best)

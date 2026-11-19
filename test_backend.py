@@ -34,7 +34,10 @@ class Verification(unittest.TestCase):
         self.assertTrue(evaluate(c,["智民里"])["violations"])
 
     def test_minimal_and_deadline(self):
-        c={**new_contract(),"origin":"江汉路","must":["智民里"],"start":600,"end":700}
+        from transport import choose
+        # Only the must-visit fits: the fastest leg there plus its stay, with five minutes to spare.
+        tight=600+choose("江汉路","智民里",{"rules":[]},600,{},True)["minutes"]+PLACES["智民里"]["minutes"]+5
+        c={**new_contract(),"origin":"江汉路","must":["智民里"],"start":600,"end":tight}
         prior=["黎黄陂路","智民里"]
         route,proof=solve(c,prior,["户部巷"])
         self.assertEqual(route,["智民里"])

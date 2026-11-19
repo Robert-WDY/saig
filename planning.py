@@ -61,7 +61,17 @@ def validate(c):
             raise Invalid("无效的访问窗口")
 
 
-def evaluate(c, order):
+def evaluate(c, order, strict=False):
+    """Audit one day. Short hops walk by default; if that breaks the day, re-audit with the fastest leg everywhere."""
+    proof=_evaluate(c, order, strict)
+    if proof["violations"] and not strict:
+        fastest=_evaluate(c, order, True)
+        if len(fastest["violations"])<len(proof["violations"]):
+            return fastest
+    return proof
+
+
+def _evaluate(c, order, strict):
     validate(c)
     if len(order)!=len(set(order)) or any(n not in PLACES or not PLACES[n]["minutes"] for n in order):
         raise Invalid("站点重复或无法规划")
@@ -74,7 +84,7 @@ def evaluate(c, order):
     def travel(a,b,minute):
         if not a or not b:return 0
         try:
-            leg=choose(a,b,c.get("mobility", {"rules":[]}),minute,cache)
+            leg=choose(a,b,c.get("mobility", {"rules":[]}),minute,cache,strict)
         except ValueError as exc:
             violations.append(str(exc))
             return 0

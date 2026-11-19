@@ -1,7 +1,7 @@
 "use strict";
 
 async function downloadComparisonPoster(rows) {
-  const art = document.querySelector(".hero img");
+  const art = document.querySelector(".stage-art img");
   if (art.decode) await art.decode();
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
