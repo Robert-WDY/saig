@@ -3,18 +3,18 @@ from collections import defaultdict
 from functools import lru_cache
 from heapq import heappush, heappop
 import json
-from math import ceil
+from math import ceil, cos, hypot, radians
 from pathlib import Path
 import requests
 
-from places import PLACES,transit,amap_key
+from places import PLACES,ATLAS_POINTS,transit,amap_key
 from diagnostics import timed
 from limits import remaining
 from trip_contract import settings
 
 DATA=Path(__file__).parent/"data"
 FARES="https://jtj.wuhan.gov.cn/zwgk/zfxxgkml/sfqd/202007/t20200709_1399147.shtml"
-LABEL={"walk":"步行","taxi":"出租车","metro":"地铁","transit":"公交地铁","estimate":"片区转场待核实"}
+LABEL={"walk":"步行","taxi":"出租车","metro":"地铁","transit":"公交地铁","estimate":"估算转场"}
 # Station associations explicitly named in the travel handbook, pp. 200–203.
 ACCESS={**dict.fromkeys(("黄鹤楼","斗级营","昙华林","户部巷","粮道街"),"司门口黄鹤楼"),
         **dict.fromkeys(("江汉关","江汉路"),"江汉路"),**dict.fromkeys(("黎黄陂路","吉庆街","巴公房子","八七会议会址","中共中央机关旧址"),"大智路"),
@@ -22,7 +22,7 @@ ACCESS={**dict.fromkeys(("黄鹤楼","斗级营","昙华林","户部巷","粮道
         "古琴台":"琴台","龟山公园":"琴台","万松园":"王家墩东","楚河汉街":"楚河汉街","中山公园":"中山公园",
         "武汉博物馆":"汉口火车站","光谷广场":"光谷广场","光谷空轨":"光谷四路"}
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=8)
 def snapshot(name):
     return json.loads((DATA/name).read_text("utf8"))
 
@@ -107,6 +107,12 @@ def live_transit(a,b,date,minute,cache):
         except (TypeError,ValueError,KeyError,IndexError):continue
     return options
 
+def straight_km(a,b):
+    p,q=ATLAS_POINTS.get(a),ATLAS_POINTS.get(b)
+    if not p or not q:return None
+    x=(q["lon"]-p["lon"])*cos(radians((p["lat"]+q["lat"])/2))
+    return 111.2*hypot(x,q["lat"]-p["lat"])
+
 def choose(a,b,mobility,minute,cache):
     v=settings(mobility)
     people=v.get("人数")
@@ -123,6 +129,13 @@ def choose(a,b,mobility,minute,cache):
         metres,mins,snap=obs["walk"]
         rows.append(dict(mode="walk",minutes=max(1,mins+ceil(snap/65)),walk_m=metres+snap,changes=0,
                          group_fare=0,fare_bound=0,source="OSRM 步行路网，地图参考点",directions="沿步行路网前往"))
+    else:
+        km=straight_km(a,b)
+        if km is not None and km<=1.5:
+            # Neighbouring stops in one historic block: budget a winding walk from map reference points.
+            metres=round(km*1350)
+            rows.append(dict(mode="walk",minutes=max(3,ceil(metres/65)),walk_m=metres,changes=0,group_fare=0,fare_bound=0,
+                             source="地图参考点直线距离×1.35 估算",directions="相邻街区步行，按距离估算"))
     if "taxi" in obs:
         metres,mins,_=obs["taxi"]
         km=metres/1000
@@ -168,13 +181,14 @@ def choose(a,b,mobility,minute,cache):
         if pref=="cheap":return (row["group_fare"] if row["group_fare"] is not None else inf,row["minutes"])
         if pref=="fewer_changes":return (row["changes"],row["minutes"])
         if pref in ("metro","walk","taxi"):
-            if pref=="metro" and row["mode"]=="walk" and row["walk_m"]<=800:
+            if pref=="metro" and row["mode"]=="walk" and (row["walk_m"]<=800 or row["minutes"]<=20):
                 return (False,row["minutes"])
             return (row["mode"]!=pref,row["minutes"])
-        return (row["minutes"],)
+        # Visitors walk short hops instead of waiting for a taxi or changing metro lines.
+        return (not(row["mode"]=="walk" and row["minutes"]<=20),row["minutes"])
     best=min(feasible,key=rank)
     result=dict(origin=a,destination=b,**best)
-    if best["mode"] in ("walk","taxi"):
+    if best["mode"] in ("walk","taxi") and best["source"]!="地图参考点直线距离×1.35 估算":
         data=snapshot("road_network.json")
         layer=data["profiles"][best["mode"]]
         if "routed_points" in layer:

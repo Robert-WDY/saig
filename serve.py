@@ -94,7 +94,14 @@ class ReviewedSources:
 def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
     hosts = {h.lower() for h in hosts} if hosts else None
     sources = ReviewedSources(agent, DATA/"official.json") if isinstance(agent.kb, Knowledge) else None
-    session_locks = [Lock() for _ in range(97)]
+    session_locks = {}
+    locks_guard = Lock()
+    def session_lock(key):
+        # One lock per session, so unrelated sessions never block each other.
+        with locks_guard:
+            if len(session_locks)>4096:
+                for k in [k for k,l in session_locks.items() if not l.locked()]:del session_locks[k]
+            return session_locks.setdefault(key,Lock())
     probe_lock = Lock()
     probe = {"next":0, "ok":False}
 
@@ -203,14 +210,15 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
             except (ValueError,TypeError,UnicodeError):
                 return self.send_json(400,{"error":"请求字段或格式无效"})
             internal=("invite:"+hashlib.sha256(sid.encode()).hexdigest()) if invite else sid
-            lock=session_locks[hash(internal)%len(session_locks)]
+            lock=session_lock(internal)
             if not lock.acquire(blocking=False):
                 return self.send_json(409,{"error":"会话正在处理，请稍后再试。"})
             attempts=0
             def charge():
                 nonlocal attempts
-                if attempts>=24:raise CapacityError("本轮达到模型调用上限，请拆分问题。")
-                agent.store.charge(internal,session_cap,day_cap)
+                if attempts>=32:raise CapacityError("本轮达到模型调用上限，请拆分问题。")
+                # Daily caps count visitor turns, not the model calls inside one turn.
+                if not attempts:agent.store.charge(internal,session_cap,day_cap)
                 attempts+=1
             try:
                 current = sources.current() if sources and self.path!="/session/delete" else agent

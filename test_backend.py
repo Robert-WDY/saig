@@ -26,7 +26,9 @@ class Verification(unittest.TestCase):
 
     def test_exact_boundary(self):
         c={**new_contract(),"origin":"江汉路","must":["智民里"],"destination":"汉口站","end":900,"buffer":20}
-        c["start"]=900-20-60-40-25
+        from transport import choose
+        legs=[choose(a,b,{"rules":[]},600,{})["minutes"] for a,b in (("江汉路","智民里"),("智民里","汉口站"))]
+        c["start"]=900-20-sum(legs)-PLACES["智民里"]["minutes"]
         self.assertFalse(evaluate(c,["智民里"])["violations"])
         c["start"]+=1
         self.assertTrue(evaluate(c,["智民里"])["violations"])
