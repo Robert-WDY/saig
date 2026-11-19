@@ -1,0 +1,26 @@
+{
+  "古琴台": {
+    "lat": 30.55667,
+    "lon": 114.25833,
+    "crs": "WGS84",
+    "label": "古琴台",
+    "source": "https://commons.wikimedia.org/wiki/Category:Lute_Platform"
+  },
+  "汉口江滩": {
+    "lat": 30.583891,
+    "lon": 114.295602,
+    "crs": "WGS84",
+    "label": "汉口江滩区域参考点",
+    "source": "https://www.openstreetmap.org/way/1161133512",
+    "usage": "江滩区域参考点"
+  },
+  "三镇民生甜食馆": {
+    "lat": 30.5894293,
+    "lon": 114.2925076,
+    "crs": "WGS84",
+    "label": "三镇民生甜食馆 · 胜利街兰陵路路口",
+    "source": "https://www.openstreetmap.org/node/1880527338",
+    "venue_source": "https://news.cjn.cn/cqpd/lbt_19985/202307/t4637936.htm",
+    "usage": "总馆所在路口参考点"
+  }
+}

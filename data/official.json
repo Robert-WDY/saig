@@ -1,0 +1,74 @@
+[
+  {
+    "id": "register",
+    "category": "saig",
+    "title": "个人参赛与材料",
+    "text": "个人独立参赛，允许使用 AI，报名免费。报名必填项目简介与可完整观看的演示视频链接，产品体验链接或项目主页选填。视频发布带 #SAIG，独立标签栏填 SAIG。",
+    "locator": "个人参赛与材料",
+    "source": "https://www.dlife.love/saig/#register",
+    "edition": "核对 2026-11-19"
+  },
+  {
+    "id": "challenge",
+    "category": "saig",
+    "title": "线上赛题与四项评分",
+    "text": "武汉数命 SPU 城市 AI 接待员应介绍武汉、介绍数命 SPU 社区、规划武汉旅游，并介绍数命 SPU 与 SAIG。四项各 25 分。线上采用导师审核，分数不公开。",
+    "locator": "线上赛题与四项评分",
+    "source": "https://www.dlife.love/saig/#challenge",
+    "edition": "核对 2026-11-19"
+  },
+  {
+    "id": "deadline",
+    "category": "saig",
+    "title": "报名截止与点赞统计",
+    "text": "截至 2026-11-19 官网开放报名，报名截止时间待公告。2026-11-20 23:59:59 北京时间是人气榜点赞统计截止。只统计报名填写的视频链接。不能据此保证 11 月 21 日仍能报名。",
+    "locator": "报名截止与点赞统计",
+    "source": "https://www.dlife.love/saig/#dday",
+    "edition": "核对 2026-11-19"
+  },
+  {
+    "id": "selection",
+    "category": "saig",
+    "title": "选拔、赛区与现场赛制",
+    "text": "人气榜前18位直邀，三个赛区各选30人，其中AI从业者和非AI从业者各15人，共108席。武汉线下赛12月18日、19日每天10:00–18:00，现场40%、赛后市场检验60%。",
+    "locator": "选拔、赛区与现场赛制",
+    "source": "https://www.dlife.love/saig/#dday",
+    "edition": "核对 2026-11-18"
+  },
+  {
+    "id": "venue",
+    "category": "community",
+    "title": "江岸主会场交通",
+    "text": "数命SPU社区武汉江岸会场在智民里。官网列出附近地铁江汉路站（2、6号线）和大智路站（1、6号线）。访问时间和入场条件需向活动方确认。",
+    "locator": "江岸主会场交通",
+    "source": "https://www.dlife.love/saig/",
+    "edition": "核对 2026-11-18"
+  },
+  {
+    "id": "towns",
+    "category": "wuhan",
+    "title": "武汉三镇与江汉路",
+    "text": "长江和汉江在武汉交汇。武汉三镇是汉口、武昌、汉阳。江汉路位于汉口，南起江汉关，北至京汉大道。",
+    "locator": "武汉三镇与江汉路",
+    "source": "https://www.wuhan.gov.cn/zwgk/xxgk/zfgz_new/202504/P020260407558818018018.pdf",
+    "edition": "核对 2026-11-18"
+  },
+  {
+    "id": "oldtown",
+    "category": "guide",
+    "title": "汉口老城慢逛半日",
+    "text": "可先过早，再到黎黄陂路看老建筑。体力允许再逛山海关路、武汉天地或汉口江滩。用作慢游参考，选择部分站点。",
+    "locator": "汉口老城慢逛半日",
+    "source": "https://sw.wuhan.gov.cn/xwdt/gzdt/202610/t20261008_2857351.shtml",
+    "edition": "核对 2026-11-18"
+  },
+  {
+    "id": "breakfast",
+    "category": "food",
+    "title": "武汉过早",
+    "text": "武汉人把吃早餐叫过早。可以了解热干面、豆皮、面窝或糊汤粉；不同店家的配方、过敏原和供餐时间需要到店确认。",
+    "locator": "武汉过早",
+    "source": "https://sw.wuhan.gov.cn/xwdt/gzdt/202610/t20261008_2857351.shtml",
+    "edition": "核对 2026-11-18"
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  },
+  "private": true,
+  "scripts": {
+    "build": "esbuild web/chat.js web/routes.js web/route-time.js web/poster.js --target=chrome69,safari12 --charset=utf8 --outdir=web/dist"
+  }
+}

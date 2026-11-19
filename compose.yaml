@@ -1,0 +1,31 @@
+services:
+  api:
+    build: .
+    environment:
+      SAIG_INVITE: ${SAIG_INVITE:?set an invitation code}
+      SAIG_ALLOWED_HOSTS: ${SAIG_DOMAIN:?set public DNS name}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?set provider key}
+      SAIG_AMAP_KEY: ${SAIG_AMAP_KEY:-}
+      SAIG_SESSION_CAP: ${SAIG_SESSION_CAP:-60}
+      SAIG_DAY_CAP: ${SAIG_DAY_CAP:-300}
+    volumes:
+      - conversations:/state
+    restart: unless-stopped
+  https:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SAIG_DOMAIN: ${SAIG_DOMAIN:?set public DNS name}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+volumes:
+  conversations:
+  certificates:
+  caddy-config:

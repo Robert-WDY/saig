@@ -1,0 +1,7 @@
+numpy>=1.26,<3
+scikit-learn>=1.4,<2
+pypdf>=5,<8
+requests>=2.31,<3
+jsonschema>=4.18,<5
+pywin32>=306; sys_platform == "win32"
+threadpoolctl>=3,<4

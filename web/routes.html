@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12399d">
+  <title>路线地图 · 武汉接线台</title>
+  <link rel="icon" type="image/png" href="/web/icon.png">
+  <link rel="stylesheet" href="/web/vendor/leaflet.css">
+  <link rel="stylesheet" href="/web/style.css">
+  <link rel="stylesheet" href="/web/routes.css">
+  <script src="/web/vendor/leaflet.js" defer></script>
+  <script src="/web/compat.js" defer></script>
+  <script src="/web/route-time.js" defer></script>
+  <script src="/web/routes.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#route-title">跳到路线</a>
+  <header class="site-header">
+    <div class="frame header-inner">
+      <a href="/" class="brand">
+        <span class="mark" aria-hidden="true">接</span>
+        <span><strong>武汉接线台</strong><small>数命 SPU 城市 AI 接待员</small></span>
+      </a>
+      <nav aria-label="主导航">
+        <a class="nav-item" href="/">接待台</a>
+        <a class="nav-item current" aria-current="page" href="/routes">路线地图</a>
+      </nav>
+      <a class="text-button map-button" href="/">返回接待台</a>
+    </div>
+  </header>
+  <main class="frame route-page">
+    <header class="route-heading">
+      <div>
+        <h1 id="route-title" tabindex="-1">沿着路线走遍武汉</h1>
+        <p>选一份方案和日期，点亮一路上的站点。</p>
+      </div>
+      <img srcset="/web/hero-small.webp 600w, /web/wuhan-switchboard.webp 1200w" sizes="(max-width: 640px) 100vw, 75vw" src="/web/hero-small.webp" alt="" width="1440" height="960">
+    </header>
+    <section class="map-layout" aria-labelledby="route-title">
+      <div class="map-shell">
+        <div class="map-toolbar">
+          <button id="play-route" class="send" type="button" disabled>播放路线</button>
+          <button id="fit-route" class="text-button" type="button" disabled>查看全程</button>
+          <span id="route-progress" role="status"></span>
+        </div>
+        <div id="route-map" aria-label="武汉行程地图"></div>
+        <div class="map-footer">
+          <span id="map-source-note">默认使用本地位置示意，图层按钮可切换街道图。连线表示游览顺序。</span>
+          <span id="tile-feedback" role="status" hidden>在线街道图暂不可用，已切回本地位置示意。</span>
+        </div>
+      </div>
+      <section class="route-sidebar" aria-labelledby="day-title">
+        <div class="route-selectors">
+          <label for="route-plan">行程方案</label>
+          <select id="route-plan" disabled></select>
+          <div id="route-days" class="route-days" aria-label="选择日期"></div>
+        </div>
+        <div class="route-stops-header" id="route-stops-header">
+          <h2 id="day-title">路线站点</h2>
+          <p id="day-summary"></p>
+        </div>
+        <ol id="route-stops"></ol>
+        <div id="route-empty" class="route-empty">
+          <p>还没有行程。先请接待员排一条武汉路线。</p>
+          <a class="text-button map-button" href="/#assistant">去规划行程</a>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

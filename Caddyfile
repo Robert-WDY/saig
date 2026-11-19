@@ -1,0 +1,5 @@
+{$SAIG_DOMAIN} {
+    reverse_proxy api:18943
+    header Referrer-Policy no-referrer
+    header X-Content-Type-Options nosniff
+}

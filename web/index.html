@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12399d">
+  <title>武汉接线台 · 数命 SPU 城市 AI 接待员</title>
+  <link rel="icon" type="image/png" href="/web/icon.png">
+  <link rel="stylesheet" href="/web/style.css">
+  <script src="/web/poster.js" defer></script>
+  <script src="/web/compat.js" defer></script>
+  <script src="/web/route-time.js" defer></script>
+  <script src="/web/chat.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#question">跳到对话</a>
+  <header class="site-header">
+    <div class="frame header-inner">
+      <a href="/" class="brand">
+        <span class="mark" aria-hidden="true">接</span>
+        <span><strong>武汉接线台</strong><small>数命 SPU 城市 AI 接待员</small></span>
+      </a>
+      <nav aria-label="主导航">
+        <a class="nav-item current" href="#assistant">接待台</a>
+        <a class="nav-item" href="#workspace">行程板</a>
+        <a class="nav-item nav-map" href="/routes">路线地图</a>
+        <a class="nav-item nav-external" href="https://www.dlife.love/saig/" target="_blank" rel="noopener noreferrer">SAIG 官网 <span aria-hidden="true">↗</span></a>
+      </nav>
+      <span id="connection" class="connection"><i aria-hidden="true"></i>连接中</span>
+    </div>
+  </header>
+
+  <main class="frame">
+    <section class="hero" aria-labelledby="welcome-title">
+      <img srcset="/web/hero-small.webp 600w, /web/wuhan-switchboard.webp 1200w" sizes="(max-width: 640px) 100vw, 75vw" src="/web/hero-small.webp" alt="丝网印风格的武汉城市插画，暖橙色黄鹤楼立在蓝色江岸，长江大桥斜跨江面" width="1440" height="960" fetchpriority="high">
+      <div class="hero-body">
+        <h1 id="welcome-title">喂，武汉<br>怎么走？</h1>
+        <p>一天还是两天？先排两条线，<br>临时改口也能接得上。</p>
+        <button class="hero-action" type="button" id="start">开始对话 <span aria-hidden="true">↓</span></button>
+      </div>
+      <span class="illustration-credit">武汉城市插画 · AI 绘制</span>
+    </section>
+
+    <div class="workbench">
+      <section class="panel chat-panel" id="assistant" aria-labelledby="assistant-title">
+        <header class="panel-head">
+          <div class="head-title">
+            <span class="mark small" aria-hidden="true">接</span>
+            <div><h2 id="assistant-title">接待台</h2><p>聊武汉、排路线、问社区和比赛</p></div>
+          </div>
+          <button id="reset" class="text-button" type="button"><span aria-hidden="true">＋</span> 新对话</button>
+        </header>
+        <div class="chat-window" id="chat-window" tabindex="0" aria-label="对话记录">
+          <div class="welcome" id="welcome">
+            <p class="greeting">接通了，想去哪儿？</p>
+            <div class="starter-grid">
+              <button type="button" class="starter" data-prompt="第一次来武汉，常听人说「武汉三镇」，到底是哪三镇？早上在汉口可以吃些什么？">
+                <span class="starter-icon rust" aria-hidden="true">城</span><span><strong>认识武汉</strong><small>三镇与过早</small></span><span class="arrow" aria-hidden="true">↗</span>
+              </button>
+              <button type="button" class="starter" data-prompt="给我一份武汉一日游和一份两日游，比较一下怎么玩。">
+                <span class="starter-icon green" aria-hidden="true">游</span><span><strong>规划行程</strong><small>对比一日游和两日游</small></span><span class="arrow" aria-hidden="true">↗</span>
+              </button>
+              <button type="button" class="starter" data-prompt="我想去江岸的数命 SPU 社区看看。它在哪个街区？没有项目经验的人去了能学什么？">
+                <span class="starter-icon blue" aria-hidden="true">聚</span><span><strong>探访社区</strong><small>智民里与真实订单带教</small></span><span class="arrow" aria-hidden="true">↗</span>
+              </button>
+              <button type="button" class="starter" data-prompt="数命 SPU 是什么意思？我想以个人身份参加 SAIG 线上赛，需要提交什么？">
+                <span class="starter-icon gold" aria-hidden="true">赛</span><span><strong>了解 SAIG</strong><small>SPU 概念与参赛材料</small></span><span class="arrow" aria-hidden="true">↗</span>
+              </button>
+            </div>
+          </div>
+          <div id="messages" role="log" aria-label="游客与接待员的消息" aria-live="polite"></div>
+        </div>
+        <div class="compose-area">
+          <div class="followups" id="followups" hidden></div>
+          <form id="composer">
+            <label class="sr-only" for="question">想问点什么</label>
+            <textarea id="question" name="question" autocomplete="off" rows="1" maxlength="3000" placeholder="想怎么逛武汉？…" required></textarea>
+            <button id="send" class="send" type="submit">发送 <span aria-hidden="true">↑</span></button>
+          </form>
+          <div class="compose-meta">
+            <span id="progress" role="status"></span>
+            <span>Enter 发送 · Shift + Enter 换行</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel trip-panel" id="workspace" aria-labelledby="workspace-title">
+        <header class="panel-head trip-head">
+          <div class="head-title"><span class="board-mark" aria-hidden="true">路</span><div><h2 id="workspace-title">行程板</h2><p id="board-summary">查看路线和方案差异</p></div></div>
+          <div class="board-actions">
+            <a id="jump-map" class="text-button map-button" href="/routes">路线地图</a>
+            <button id="save-comparison" class="text-button export-button" type="button" aria-live="polite" hidden>保存对比图 ↓</button>
+          </div>
+        </header>
+        <div class="tabs" aria-label="行程板视图" role="tablist">
+          <button id="plans-tab" type="button" role="tab" aria-controls="plans" aria-selected="true" tabindex="0">行程</button>
+          <button id="comparison-tab" type="button" role="tab" aria-controls="comparison" aria-selected="false" tabindex="-1">比较</button>
+        </div>
+        <div id="plans" class="board-content" role="tabpanel" aria-labelledby="plans-tab" tabindex="0"></div>
+        <div id="comparison" class="board-content" role="tabpanel" aria-labelledby="comparison-tab" tabindex="0" hidden></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="frame footer">
+    <a href="https://www.dlife.love/saig/" target="_blank" rel="noopener noreferrer">数命 SPU · SAIG 官网 ↗</a>
+    <details><summary>隐私与数据使用</summary><p>问题、相关对话和必要的行程资料会发送给 DeepSeek 生成答复；地点查询可能提交给高德。请避免输入真实姓名、手机号、证件号及具体住址。本服务在最后一次成功对话后保留会话约 24 小时，可点「新对话」提前删除。模型调用计数按北京时间每日更新。浏览器中的本页记录可通过新对话清除。</p></details>
+    <span>行程时间为估算，出发前核实开放和预约。</span>
+  </footer>
+  <dialog id="reset-dialog" aria-labelledby="reset-title">
+    <form method="dialog">
+      <h2 id="reset-title">开始新对话？</h2>
+      <p>确认后删除服务器上的本次对话、行程和记忆，同时清空本页。</p>
+      <div class="dialog-actions"><button value="cancel" class="text-button" autofocus>取消</button><button value="reset" class="send">开始新对话</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

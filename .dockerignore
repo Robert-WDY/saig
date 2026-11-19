@@ -1,0 +1,9 @@
+**
+!*.py
+!requirements.lock
+!web/
+!web/**
+web/wuhan.jpg
+!data/
+!data/*.json
+data/eval*.json

@@ -1,0 +1,44 @@
+{
+  "昙华林": {
+    "lat": 30.55163889,
+    "lon": 114.31156111,
+    "crs": "WGS84",
+    "source": "https://zh.wikipedia.org/wiki/%E6%98%99%E5%8D%8E%E6%9E%97",
+    "usage": "地标参考点，入口以地图与现场为准"
+  },
+  "武汉大学": {
+    "lat": 30.54083333,
+    "lon": 114.36111111,
+    "crs": "WGS84",
+    "source": "https://zh.wikipedia.org/wiki/%E6%AD%A6%E6%B1%89%E5%A4%A7%E5%AD%A6",
+    "usage": "地标参考点，入口以地图与现场为准"
+  },
+  "汉口站": {
+    "lat": 30.62158056,
+    "lon": 114.24895278,
+    "crs": "WGS84",
+    "source": "https://zh.wikipedia.org/wiki/%E6%B1%89%E5%8F%A3%E7%AB%99",
+    "usage": "地标参考点，入口以地图与现场为准"
+  },
+  "江汉关": {
+    "lat": 30.57873611,
+    "lon": 114.29207889,
+    "crs": "WGS84",
+    "source": "https://zh.wikipedia.org/wiki/%E6%B1%9F%E6%B1%89%E5%85%B3%E5%A4%A7%E6%A5%BC",
+    "usage": "地标参考点，入口以地图与现场为准"
+  },
+  "湖北省博物馆": {
+    "lat": 30.56388889,
+    "lon": 114.35888889,
+    "crs": "WGS84",
+    "source": "https://zh.wikipedia.org/wiki/%E6%B9%96%E5%8C%97%E7%9C%81%E5%8D%9A%E7%89%A9%E9%A6%86",
+    "usage": "地标参考点，入口以地图与现场为准"
+  },
+  "黄鹤楼": {
+    "lat": 30.54694444,
+    "lon": 114.29694444,
+    "crs": "WGS84",
+    "source": "https://zh.wikipedia.org/wiki/%E9%BB%84%E9%B9%A4%E6%A5%BC",
+    "usage": "地标参考点，入口以地图与现场为准"
+  }
+}
