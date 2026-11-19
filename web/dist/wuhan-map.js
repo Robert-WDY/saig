@@ -1,6 +1,7 @@
 "use strict";
 const WuhanMap = (() => {
   const bounds = L.latLngBounds([29.89, 113.62], [31.42, 115.16]);
+  const core = L.latLngBounds([30.475, 114.185], [30.64, 114.43]);
   const attribution = '市界 <a href="https://datav.aliyun.com/portal/school/atlas/area_selector">DataV</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://openfreemap.org/">OpenFreeMap</a> / <a href="https://openmaptiles.org/">OpenMapTiles</a>';
   async function readJSON(url) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -160,6 +161,13 @@ const WuhanMap = (() => {
     });
     shell.addTo(map);
     const LocalTiles = L.TileLayer.extend({
+      // Overlap neighbours by one pixel so fractional zoom never shows hairline seams.
+      _initTile(tile) {
+        L.TileLayer.prototype._initTile.call(this, tile);
+        const s = this.getTileSize();
+        tile.style.width = s.x + 1 + "px";
+        tile.style.height = s.y + 1 + "px";
+      },
       getTileUrl(coords) {
         const key = coords.x + "-" + coords.y;
         return this.options.available.has(key) ? "/web/island/" + key + ".svg" : L.Util.emptyImageUrl;
@@ -253,6 +261,7 @@ const WuhanMap = (() => {
     map.on("resize", minimum);
     map.fitBounds(bounds, { padding: [12, 12], animate: false });
     minimum();
+    map.fitBounds(core, { padding: [8, 8], animate: false });
     smoothWheel(map, cityCenter);
     loadIndex();
     landmarkArt();
@@ -280,5 +289,5 @@ const WuhanMap = (() => {
       };
     });
   }
-  return { create, bounds, stops, readJSON };
+  return { create, bounds, core, stops, readJSON };
 })();

@@ -3,6 +3,8 @@
 // Both map screens use the same local board, Mercator projection and camera controls.
 const WuhanMap = (() => {
   const bounds = L.latLngBounds([29.89,113.62],[31.42,115.16]);
+  // Hankou, Wuchang, Hanyang, East Lake and Optics Valley: where nearly every visitor stop is.
+  const core = L.latLngBounds([30.475,114.185],[30.64,114.43]);
   const attribution = '市界 <a href="https://datav.aliyun.com/portal/school/atlas/area_selector">DataV</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://openfreemap.org/">OpenFreeMap</a> / <a href="https://openmaptiles.org/">OpenMapTiles</a>';
   async function readJSON(url){
     for(let attempt=0;attempt<2;attempt++){
@@ -101,6 +103,8 @@ const WuhanMap = (() => {
     shell.on("load",()=>{baseReady=true;baseError=false;state();});
     shell.on("error",()=>{baseError=true;state();});shell.addTo(map);
     const LocalTiles=L.TileLayer.extend({
+      // Overlap neighbours by one pixel so fractional zoom never shows hairline seams.
+      _initTile(tile){L.TileLayer.prototype._initTile.call(this,tile);const s=this.getTileSize();tile.style.width=(s.x+1)+"px";tile.style.height=(s.y+1)+"px";},
       getTileUrl(coords){const key=coords.x+"-"+coords.y;
         return this.options.available.has(key)?"/web/island/"+key+".svg":L.Util.emptyImageUrl;}
     });
@@ -142,7 +146,7 @@ const WuhanMap = (() => {
       map.setMinZoom(min);
     }
     map.on("zoomend",()=>{landmarkArt();state();});map.on("resize",minimum);
-    map.fitBounds(bounds,{padding:[12,12],animate:false});minimum();smoothWheel(map,cityCenter);loadIndex();landmarkArt();state();
+    map.fitBounds(bounds,{padding:[12,12],animate:false});minimum();map.fitBounds(core,{padding:[8,8],animate:false});smoothWheel(map,cityCenter);loadIndex();landmarkArt();state();
     return map;
   }
   function stops(card,points){
@@ -156,5 +160,5 @@ const WuhanMap = (() => {
     return result.map((stop,i)=>{const p=points[stop.name];return {...stop,coords:p&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)?[p.lat,p.lon]:null,
       leg:legs.find(l=>l.origin===result[i-1]?.name&&l.destination===stop.name)};});
   }
-  return {create,bounds,stops,readJSON};
+  return {create,bounds,core,stops,readJSON};
 })();

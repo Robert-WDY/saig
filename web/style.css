@@ -308,3 +308,5 @@ dialog::backdrop { background: #15262188; }
   .porpoise-body, .porpoise-shadow, .porpoise-dots i, .porpoise-waves i { animation: none !important; }
 }
 .voice-toggle { display: inline-flex; align-items: center; gap: 5px; }
+.porpoise-mark { background: #dcecfb url("/web/porpoise-face.webp") 50% 30% / 94% auto no-repeat; box-shadow: inset 0 0 0 2px var(--accent-dark); }
+.leaflet-container .wuhan-streets img.leaflet-tile { mix-blend-mode: normal; }

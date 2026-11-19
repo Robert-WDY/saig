@@ -44,7 +44,7 @@ function fit() {
   const current = visible().filter((r) => r.point);
   if (!current.length) return;
   if (current.length === rows.filter((r) => r.point).length) {
-    map.fitBounds(WuhanMap.bounds, { padding: [12, 12], animate: false });
+    map.fitBounds(WuhanMap.core, { padding: [8, 8], animate: false });
     return;
   }
   map.fitBounds(L.latLngBounds(current.map(coords)), { paddingTopLeft: [54, 54], paddingBottomRight: [54, 60], maxZoom: 14, animate: false });
@@ -62,11 +62,11 @@ function renderPins() {
   const used = routeMarkers.filter(Boolean).map((m) => map.latLngToLayerPoint(m.getLatLng())), offsets = [[0, 0], [0, -58], [0, 58], [68, 0], [-68, 0], [66, -51], [-66, 51], [-66, -51], [66, 51]];
   const matches = visible().filter((r) => r.point), buckets = /* @__PURE__ */ new Map(), singles = [];
   for (const row of matches) {
-    if (row === selected || matches.length < 15 || map.getZoom() >= 15) {
+    if (row === selected || matches.length < 15 || map.getZoom() >= 14) {
       singles.push(row);
       continue;
     }
-    const pixel = map.project(coords(row)), key2 = matches.length > 36 && map.getZoom() < 10.5 ? row.district : Math.floor(pixel.x / 86) + "/" + Math.floor(pixel.y / 68);
+    const pixel = map.project(coords(row)), key2 = matches.length > 36 && map.getZoom() < 10.5 ? row.district : Math.floor(pixel.x / 64) + "/" + Math.floor(pixel.y / 48);
     if (!buckets.has(key2)) buckets.set(key2, []);
     buckets.get(key2).push(row);
   }
@@ -97,8 +97,8 @@ function renderPins() {
     used.push(center);
     const pinPos = map.layerPointToLatLng(center);
     if (offset[0] || offset[1]) {
-      L.polyline([pos, pinPos], { weight: 1.5, opacity: 0.8, color: "#557769", interactive: false }).addTo(pins);
-      L.circleMarker(pos, { radius: 2.5, color: "#426555", interactive: false }).addTo(pins);
+      L.polyline([pos, pinPos], { weight: 1.5, opacity: 0.8, color: "#4b5675", interactive: false }).addTo(pins);
+      L.circleMarker(pos, { radius: 2.5, color: "#12399d", interactive: false }).addTo(pins);
     }
     const picture = row.photo ? node("img") : node("span", { "公园山水": "山", "展馆文博": "馆", "亲子游乐": "游", "地方美食": "食" }[row.topic] || "景", "pin-symbol");
     if (row.photo) {
@@ -320,6 +320,11 @@ el("overview").onclick = () => {
   routeFramed = false;
   el("atlas-map").classList.remove("itinerary-focus");
   map.fitBounds(WuhanMap.bounds, { padding: [12, 12], animate: false });
+};
+el("core-view").onclick = () => {
+  routeFramed = false;
+  el("atlas-map").classList.remove("itinerary-focus");
+  map.fitBounds(WuhanMap.core, { padding: [8, 8], animate: false });
 };
 el("expand").onclick = () => expand(el("expand").getAttribute("aria-pressed") !== "true");
 document.addEventListener("keydown", (e) => {
