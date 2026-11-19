@@ -2,7 +2,7 @@
 
 武汉数命 SPU 城市 AI 接待员，支持武汉与社区问答、自然语言行程规划和修改、路线地图及 SAIG 参赛咨询。DeepSeek 判断意图，Python 校验行程、事实引用和修改范围。
 
-[观看 100 秒字幕演示](https://robert-wdy.github.io/saig/) · [报名项目简介](docs/release/报名材料.md) · [发布验收](docs/release/发布验收.md)
+[观看 2 分钟演示片](https://robert-wdy.github.io/saig/) · [原画质下载](https://github.com/Robert-WDY/saig/releases/tag/promo-v1) · [报名项目简介](docs/release/报名材料.md) · [发布验收](docs/release/发布验收.md)
 
 ## 本机运行
 
