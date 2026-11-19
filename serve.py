@@ -48,11 +48,17 @@ WEB_ASSETS = {
 
 WEB_ASSETS.update({
     "/city": ("city.html", "text/html; charset=utf-8"),
+    "/web/wuhan-map.js": ("dist/wuhan-map.js","text/javascript; charset=utf-8"),
+    "/web/island/tiles.json": ("island/tiles.json","application/json"),
     "/web/city.js": ("dist/city.js", "text/javascript; charset=utf-8"),
     "/web/city.css": ("city.css", "text/css; charset=utf-8"),
 })
 for photo in (WEB_DIR / "atlas").glob("*.webp"):
     WEB_ASSETS["/web/atlas/"+photo.name] = ("atlas/"+photo.name, "image/webp")
+
+
+for tile in (WEB_DIR / "island").glob("*.svg"):
+    WEB_ASSETS["/web/island/"+tile.name] = ("island/"+tile.name,"image/svg+xml")
 
 
 @lru_cache(maxsize=100)
@@ -139,7 +145,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
             path=urlsplit(self.path).path
             if path in WEB_ASSETS:
                 filename,media=WEB_ASSETS[path]
-                compressed=("gzip" in self.headers.get("Accept-Encoding","").lower().split(", ") and media.startswith("text/"))
+                compressed=("gzip" in self.headers.get("Accept-Encoding","").lower().split(", ") and (media.startswith("text/") or media=="image/svg+xml"))
                 file = WEB_DIR / filename
                 if not file.is_file():
                     return self.send_json(404,{"error":"资源不存在"})

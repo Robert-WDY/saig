@@ -325,6 +325,7 @@ function currentComparison() {
 }
 function updateMapLink() {
   const url = selectedPlan ? "/routes?" + new URLSearchParams({ plan: selectedPlan, day: openDay }) : "/routes";
+  get("city-plan-link").href = url.replace("/routes", "/city");
   for (const link2 of [get("jump-map"), document.querySelector(".nav-map")]) link2.href = url;
 }
 function renderBoard() {

@@ -2,12 +2,9 @@
 var _a, _b;
 const el = (id) => document.getElementById(id);
 const key = "saig-visitor-workspace-v1";
-const map = L.map("atlas-map", { minZoom: 7, maxZoom: 16, zoomSnap: 0.25, scrollWheelZoom: true, maxBounds: [[29.95, 113.52], [31.55, 115.28]] });
-map.attributionControl.setPrefix(false);
-L.imageOverlay("/web/atlas/wuhan-region.webp", [[30.06, 113.65], [31.42, 115.15]]).addTo(map);
-L.imageOverlay("/web/atlas/wuhan-base.webp", [[30.43, 114.12], [30.69, 114.49]], {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org/">OpenFreeMap</a>'
-}).addTo(map);
+const map = WuhanMap.create("atlas-map");
+const itinerary = L.layerGroup().addTo(map);
+let routePoints = {}, routeMarkers = [], routeFramed = false;
 const labels = L.layerGroup().addTo(map);
 for (const [name, pos, river] of [["汉口", [30.596, 114.256]], ["武昌", [30.533, 114.32]], ["汉阳", [30.554, 114.225]], ["东湖", [30.568, 114.395], 1], ["长江", [30.567, 114.291], 1], ["汉江", [30.577, 114.239], 1]]) {
   L.marker(pos, { keyboard: false, interactive: false, zIndexOffset: -1e3, icon: L.divIcon({ className: "geo-label" + (river ? " river" : ""), html: name, iconSize: [52, 20] }) }).addTo(labels);
@@ -42,8 +39,14 @@ function coords(r) {
   return [r.point.lat, r.point.lon];
 }
 function fit() {
+  routeFramed = false;
+  el("atlas-map").classList.remove("itinerary-focus");
   const current = visible().filter((r) => r.point);
   if (!current.length) return;
+  if (current.length === rows.filter((r) => r.point).length) {
+    map.fitBounds(WuhanMap.bounds, { padding: [12, 12], animate: false });
+    return;
+  }
   map.fitBounds(L.latLngBounds(current.map(coords)), { paddingTopLeft: [54, 54], paddingBottomRight: [54, 60], maxZoom: 14, animate: false });
 }
 function expand(active) {
@@ -51,18 +54,19 @@ function expand(active) {
   el("expand").setAttribute("aria-pressed", String(active));
   el("expand").textContent = active ? "收起大图" : "展开大图";
   map.invalidateSize();
-  fit();
+  if (routeFramed) fitItinerary();
+  else fit();
 }
 function renderPins() {
   pins.clearLayers();
-  const used = [], offsets = [[0, 0], [0, -58], [0, 58], [68, 0], [-68, 0], [66, -51], [-66, 51], [-66, -51], [66, 51]];
+  const used = routeMarkers.filter(Boolean).map((m) => map.latLngToLayerPoint(m.getLatLng())), offsets = [[0, 0], [0, -58], [0, 58], [68, 0], [-68, 0], [66, -51], [-66, 51], [-66, -51], [66, 51]];
   const matches = visible().filter((r) => r.point), buckets = /* @__PURE__ */ new Map(), singles = [];
   for (const row of matches) {
     if (row === selected || matches.length < 15 || map.getZoom() >= 15) {
       singles.push(row);
       continue;
     }
-    const pixel = map.project(coords(row)), key2 = Math.floor(pixel.x / 86) + "/" + Math.floor(pixel.y / 68);
+    const pixel = map.project(coords(row)), key2 = matches.length > 36 && map.getZoom() < 10.5 ? row.district : Math.floor(pixel.x / 86) + "/" + Math.floor(pixel.y / 68);
     if (!buckets.has(key2)) buckets.set(key2, []);
     buckets.get(key2).push(row);
   }
@@ -72,7 +76,15 @@ function renderPins() {
       continue;
     }
     const bounds = L.latLngBounds(group.map(coords));
-    const icon = L.divIcon({ className: "poi-cluster", html: String(group.length), iconSize: [35, 35], iconAnchor: [17, 17] });
+    const district = group[0].district;
+    const regional = map.getZoom() < 10.5 && matches.length > 36 && ["江夏区", "新洲区", "黄陂区", "蔡甸区", "东西湖区"].includes(district);
+    const caption = regional ? district.slice(0, -1) + " " + group.length : String(group.length);
+    const icon = L.divIcon({
+      className: "poi-cluster" + (regional ? " district-count" : ""),
+      html: caption,
+      iconSize: regional ? [74, 28] : [35, 35],
+      iconAnchor: regional ? [37, 14] : [17, 17]
+    });
     L.marker(bounds.getCenter(), { icon, title: "展开 " + group.length + " 个地点" }).addTo(pins).on("click", () => {
       const zoom = Math.min(16, Math.max(map.getZoom() + 1, map.getBoundsZoom(bounds, false, [100, 100])));
       map.setView(bounds.getCenter(), zoom, { animate: false });
@@ -157,11 +169,60 @@ function card() {
   var _a2;
   return (_a2 = target()) == null ? void 0 : _a2.cards[el("atlas-day").value];
 }
+function fitItinerary() {
+  routeFramed = true;
+  el("atlas-map").classList.add("itinerary-focus");
+  const locations = routeMarkers.filter(Boolean).map((m) => m.getLatLng());
+  if (locations.length) map.fitBounds(locations, { paddingTopLeft: [55, 70], paddingBottomRight: [55, 48], maxZoom: 14, animate: false });
+}
+function drawItinerary(frame = false) {
+  itinerary.clearLayers();
+  routeMarkers = [];
+  const current = card(), info = el("atlas-itinerary"), list = el("atlas-stops");
+  list.replaceChildren();
+  info.hidden = !current;
+  el("fit-itinerary").hidden = !current;
+  if (!current) return;
+  el("itinerary-label").textContent = target().title + " · 第 " + el("atlas-day").value + " 天";
+  let last = null;
+  for (const [i, stop] of WuhanMap.stops(current, routePoints).entries()) {
+    const li = node("li"), b = node("button"), number = node("b", String(i + 1));
+    b.append(number, node("span", stop.name), node("small", stop.time));
+    li.append(b);
+    list.append(li);
+    if (last && stop.coords) {
+      L.polyline([last, stop.coords], { interactive: false, color: "#fff8dd", weight: 8, opacity: 0.96 }).addTo(itinerary);
+      L.polyline([last, stop.coords], { interactive: false, color: "#b64a24", weight: 4, dashArray: "9 5", opacity: 1 }).addTo(itinerary);
+    }
+    last = stop.coords;
+    if (!stop.coords) {
+      b.disabled = true;
+      b.append(node("small", "位置待核实"));
+      routeMarkers.push(null);
+      continue;
+    }
+    const icon = L.divIcon({ className: "atlas-step", html: String(i + 1), iconSize: [30, 30], iconAnchor: [15, 15] });
+    const marker = L.marker(stop.coords, { icon, title: i + 1 + " · " + stop.name, zIndexOffset: 1800 }).addTo(itinerary);
+    const popup = node("div");
+    popup.append(node("strong", stop.name), node("p", stop.time));
+    marker.bindPopup(popup);
+    routeMarkers.push(marker);
+    b.onclick = () => {
+      map.setView(stop.coords, Math.max(map.getZoom(), 13), { animate: false });
+      marker.openPopup();
+    };
+  }
+  el("fit-itinerary").disabled = !routeMarkers.some(Boolean);
+  el("route-editor-link").href = "/routes?" + new URLSearchParams({ plan: target().id, day: el("atlas-day").value });
+  renderPins();
+  if (frame) fitItinerary();
+}
 function fillDays(day) {
   const plan = target(), days = plan ? Object.keys(plan.cards) : ["1"];
   el("atlas-day").replaceChildren(...days.map((d) => new Option("第 " + d + " 天" + ((plan == null ? void 0 : plan.cards[d].calendar_label) ? " · " + plan.cards[d].calendar_label : ""), d)));
   if (days.includes(day)) el("atlas-day").value = day;
   el("day-label").hidden = !plan;
+  drawItinerary(true);
   renderChoice();
 }
 function fillPlans(plan, day) {
@@ -254,20 +315,36 @@ el("reset-filters").onclick = () => {
   el("only-plan").checked = false;
   el("filters").querySelector("button").click();
 };
-el("overview").onclick = fit;
+el("fit-itinerary").onclick = fitItinerary;
+el("overview").onclick = () => {
+  routeFramed = false;
+  el("atlas-map").classList.remove("itinerary-focus");
+  map.fitBounds(WuhanMap.bounds, { padding: [12, 12], animate: false });
+};
 el("expand").onclick = () => expand(el("expand").getAttribute("aria-pressed") !== "true");
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && el("expand").getAttribute("aria-pressed") === "true") expand(false);
 });
+function rememberSelection() {
+  if (!target()) return;
+  workspace.mapSelection = { plan: target().id, day: el("atlas-day").value };
+  try {
+    sessionStorage.setItem(key, JSON.stringify(workspace));
+  } catch {
+  }
+  history.replaceState(null, "", "/city?" + new URLSearchParams(workspace.mapSelection));
+}
 el("destination").onchange = () => {
   clearReceipt();
   fillDays();
+  rememberSelection();
 };
 el("atlas-day").onchange = () => {
   clearReceipt();
   renderChoice();
+  drawItinerary(true);
+  rememberSelection();
 };
-map.setView([30.556, 114.326], 12);
 map.on("zoomend", renderPins);
 window.addEventListener("pageshow", (e) => {
   if (e.persisted) location.reload();
@@ -277,17 +354,20 @@ window.addEventListener("resize", () => {
   map.invalidateSize();
   if (window.innerWidth !== previousWidth) {
     previousWidth = window.innerWidth;
-    fit();
+    if (routeFramed) fitItinerary();
+    else fit();
   }
 });
-fillPlans((_a = workspace.mapSelection) == null ? void 0 : _a.plan, (_b = workspace.mapSelection) == null ? void 0 : _b.day);
-fetch("/city-places").then((r) => {
-  if (!r.ok) throw new Error();
-  return r.json();
-}).then((data) => {
+const requested = new URLSearchParams(location.search);
+const requestedPlan = workspace.plans.find((p) => p.id === requested.get("plan"));
+fillPlans((requestedPlan == null ? void 0 : requestedPlan.id) || ((_a = workspace.mapSelection) == null ? void 0 : _a.plan), requestedPlan ? requested.get("day") : (_b = workspace.mapSelection) == null ? void 0 : _b.day);
+Promise.all([WuhanMap.readJSON("/city-places"), WuhanMap.readJSON("/route-points").catch(() => ({}))]).then(([data, points]) => {
   rows = data;
+  routePoints = { ...points };
+  for (const row of rows) if (row.point) routePoints[row.name] = row.point;
   for (const id of ["district", "topic"]) for (const value of [...new Set(rows.map((r) => r[id]))].sort((a, b) => a.localeCompare(b, "zh-CN"))) el(id).append(new Option(value, value));
   fillPlaces();
+  drawItinerary(true);
 }).catch(() => {
   el("feedback").textContent = "地点资料暂未加载，请刷新页面。";
 });

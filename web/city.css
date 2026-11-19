@@ -55,3 +55,20 @@
 .pin-symbol {width:32px;height:32px;background:#f4ead1;color:#334d56;border-color:#567b70}
 .poi-notice {color:#8a4b21}
 @media(max-width:600px){.atlas-filters{gap:6px}.atlas-filters input[type=search]{width:100%}.atlas-filters select{max-width:35%;padding:4px}.atlas-filters label,.atlas-filters output{font-size:12px}}
+
+.atlas-step {display:grid;place-items:center;border-radius:50%;background:#a43d1e;border:3px solid #fffaf0;color:white;font:bold 14px/1 sans-serif;box-shadow:0 1px 4px #5e372970}
+#atlas-itinerary {background:#fbf0dd;border-bottom:1px solid #ddccb1;padding:12px 16px}
+#atlas-itinerary>small{font-size:11px;color:#735742}
+#atlas-stops{margin:5px 0;padding:0;max-height:190px;overflow:auto;list-style:none}
+#atlas-stops button{display:flex;align-items:center;gap:6px;width:100%;min-height:34px;text-align:left;color:#493c2b;background:transparent;border:0;border-bottom:1px solid #e5d8c2;font-size:12px}
+#atlas-stops b{display:grid;place-items:center;flex:0 0 20px;height:20px;border-radius:50%;background:#a43d1e;color:#fffaf0}
+#atlas-stops small{margin-left:auto;font-size:11px}
+@media(max-width:650px){.map-actions{gap:3px}.map-actions button{padding:4px 8px}}
+
+.plan-controls{padding:10px 16px;background:#fff9eb;border-bottom:1px solid #d9ccb4}
+.plan-controls label{display:flex;align-items:center;gap:8px;font-weight:650;font-size:12px}
+.plan-controls label+label{margin-top:5px}
+#route-editor-link{float:right;font-size:12px}
+.itinerary-focus .atlas-pin:not(.selected),.itinerary-focus .poi-cluster{opacity:.55}
+
+.poi-cluster.district-count{border-radius:16px;font-size:12px}

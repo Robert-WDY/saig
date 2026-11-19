@@ -3,7 +3,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#12399d">
 <title>武汉地图 · 武汉接线台</title>
 <link rel="icon" href="/web/icon.png"><link rel="stylesheet" href="/web/vendor/leaflet.css"><link rel="stylesheet" href="/web/style.css"><link rel="stylesheet" href="/web/city.css">
-<script defer src="/web/vendor/leaflet.js"></script><script defer src="/web/compat.js"></script><script defer src="/web/route-time.js"></script><script defer src="/web/city.js"></script>
+<script defer src="/web/vendor/leaflet.js"></script><script defer src="/web/compat.js"></script><script defer src="/web/route-time.js"></script><script defer src="/web/wuhan-map.js"></script><script defer src="/web/city.js"></script>
 </head><body><a class="skip" href="#atlas-title">跳到武汉地图</a><!-- shared-header -->
 <main class="frame atlas">
 <header class="atlas-heading"><h1 id="atlas-title">武汉地图</h1><div id="filters" aria-label="地点类别"><button aria-pressed="true">全部</button><button aria-pressed="false">景点</button><button aria-pressed="false">大学</button><button aria-pressed="false">美食</button></div></header>
@@ -14,13 +14,15 @@
 <label><input type="checkbox" id="only-plan"> 可加入行程</label><output id="matches" aria-live="polite"></output><button id="reset-filters" hidden>清除筛选</button>
 </section><div class="atlas-layout"><section class="atlas-canvas" aria-label="武汉地点地图">
 <div id="atlas-map" aria-label="可缩放的武汉地点地图"></div>
-<div class="map-actions"><button id="overview">查看全貌</button><button id="expand" aria-pressed="false">展开大图</button></div>
+<div class="map-actions"><button id="fit-itinerary" hidden>看当天路线</button><button id="overview">武汉全貌</button><button id="expand" aria-pressed="false">展开大图</button></div>
 </section>
 <aside class="atlas-detail" aria-label="地点详情与行程">
+<div class="plan-controls"><label>行程方案<select id="destination"></select></label><label id="day-label">日期<select id="atlas-day"></select></label></div>
+<section id="atlas-itinerary" hidden aria-label="当天旅游路线"><strong id="itinerary-label"></strong><ol id="atlas-stops"></ol><small>虚线表示游览顺序</small> <a id="route-editor-link">编辑当天路线 ↗</a></section>
 <label class="lookup">查找地点<select id="lookup" aria-label="选择要查看的地点"></select></label>
 <article id="detail" aria-live="polite"></article>
 <section class="basket" aria-label="选点加入行程"><h2>我的选点 <span id="count">0</span></h2><div id="picked"></div>
-<label>加入哪份行程<select id="destination"></select></label><label id="day-label">日期<select id="atlas-day"></select></label>
+
 <button id="apply" class="primary" disabled>生成一日游</button><p id="feedback" role="status"></p><a id="open-route" hidden>查看更新的路线 ↗</a></section>
 </aside></div>
 </main></body></html>

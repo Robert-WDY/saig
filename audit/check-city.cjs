@@ -40,6 +40,11 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
   assert.deepEqual(updated.cards["1"].audit.violations,[]);
   const finish=c=>c.cards["1"].audit.arrival;
   assert(finish(updated)>finish(created));assert.match(await js("document.querySelector('#feedback').textContent"),/延后/);
+  await wait(()=>js("document.querySelector('#atlas-map').dataset.mapState==='ready'"),8000);
+  assert.deepEqual(await js("Array.from(document.querySelectorAll('#atlas-stops li button>span'),e=>e.textContent)"),updated.cards["1"].order);
+  assert.equal(await js("document.querySelectorAll('.atlas-step').length"),3);
+  await search("完全没有这个景点");assert.equal(await js("document.querySelectorAll('.atlas-step').length"),3);
+  await click("#reset-filters");await click("#fit-itinerary");
   await shot("02-加入已有行程");
   await click("#open-route");await wait(()=>js("document.querySelector('.route-stop .stop-edit')!==null"));
   await js("Array.from(document.querySelectorAll('.route-stop')).find(r=>r.querySelector('strong')?.textContent==='户部巷').querySelector('.stop-edit').click()");
@@ -66,6 +71,11 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
   await click("#open-route");await wait(()=>js("document.querySelector('.route-stop strong')?.textContent==='清凉寨'"));
   const regional=await js("({center:map.getCenter().lat,zoom:map.getZoom(),bounds:map.getBounds().contains([points['清凉寨'].lat,points['清凉寨'].lon])})");
   assert(regional.center>31 && regional.bounds);
+  // Two existing day cards exercise UI day switching without another model call.
+  await js("(()=>{const k='saig-visitor-workspace-v1',s=JSON.parse(sessionStorage.getItem(k));s.plans.push({id:'view-test',title:'分日浏览验收',cards:{1:s.plans[0].cards['1'],2:s.plans[1].cards['1']}});sessionStorage.setItem(k,JSON.stringify(s))})()");
+  await go("/city?plan=view-test&day=2");await wait(()=>js("document.querySelector('#atlas-stops button span')?.textContent==='清凉寨'"));
+  await js("document.querySelector('#atlas-day').value='1';document.querySelector('#atlas-day').dispatchEvent(new Event('change'))");
+  assert.deepEqual(await js("Array.from(document.querySelectorAll('#atlas-stops button>span'),e=>e.textContent)"),restored.cards["1"].order);
   assert.deepEqual(exceptions,[]);
   fs.writeFileSync(join(out,"验收.json"),JSON.stringify({desktop:1440,mobileEmulation:390,places:total,regional,finishMinutes:[created,updated,deleted,restored].map(finish),created:created.cards["1"].order,updated:updated.cards["1"].order,afterDelete:deleted.cards["1"].order,afterRestore:restored.cards["1"].order,exceptions},null,2));
 }).catch(e=>{console.error(e);process.exitCode=1;});

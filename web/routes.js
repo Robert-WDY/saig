@@ -1,31 +1,9 @@
 "use strict";
 
 const get = id => document.getElementById(id);
-const base = [30.573, 114.298];
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
-const map = L.map("route-map", {preferCanvas: true, scrollWheelZoom: true, minZoom: 7, maxZoom: 18}).setView(base, 12);
-map.attributionControl.setPrefix(false);
-const regionBounds = [[30.06,113.65],[31.42,115.15]];
-const localMap = L.layerGroup([
-  L.imageOverlay("/web/atlas/wuhan-region.webp", regionBounds, {
-    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org/">OpenFreeMap</a>'}),
-  L.imageOverlay("/web/atlas/wuhan-base.webp", [[30.43,114.12],[30.69,114.49]])
-]).addTo(map);
-const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 18
-});
-L.control.layers({"本地位置示意":localMap,"在线街道图":tiles}, {}, {collapsed:true}).addTo(map);
-const mapElement = get("route-map");
-tiles.on("loading", () => { mapElement.dataset.tiles = "loading"; });
-tiles.on("tileerror", () => {
-  get("tile-feedback").hidden = false;
-  if (map.hasLayer(tiles)) { map.removeLayer(tiles); localMap.addTo(map); }
-});
-tiles.on("load", () => {
-  mapElement.dataset.tiles = "settled";
-  if (mapElement.querySelector(".leaflet-tile-loaded")) get("tile-feedback").hidden = true;
-});
+const map = WuhanMap.create("route-map");
+const regionBounds = WuhanMap.bounds;
 const routeLayer = L.layerGroup().addTo(map);
 const playedLayer = L.layerGroup().addTo(map);
 
@@ -61,7 +39,6 @@ function stageAddition(name) {
 
 function drawLocalPlaces() {
   nearbyLayer.clearLayers();
-  if (!map.hasLayer(localMap)) return;
   const occupied = [];
   const zoom = map.getZoom();
   const bounds = map.getBounds();
@@ -99,7 +76,7 @@ function drawLocalPlaces() {
     });
   }
 }
-map.on("moveend zoomend baselayerchange", drawLocalPlaces);
+map.on("moveend", drawLocalPlaces);
 map.on("resize", event => {
   if (event.oldSize.x !== event.newSize.x && rows.length) fitRoute();
 });
@@ -226,11 +203,7 @@ function external(label, href) {
   return link;
 }
 
-function coordinates(name) {
-  if (!Object.prototype.hasOwnProperty.call(points, name)) return null;
-  const point = points[name];
-  return Number.isFinite(point.lat) && Number.isFinite(point.lon) ? [point.lat, point.lon] : null;
-}
+
 
 function mapSearch(name) {
   const query = new URLSearchParams({keyword: name, city: "武汉", view: "map"});
@@ -245,27 +218,7 @@ function legNavigation(leg, from, to) {
 }
 
 function buildStops(card) {
-  const stops = card.audit?.stops || [];
-  const legs = card.audit?.legs || [];
-  const contract = card.contract || {};
-  const result = [];
-  if (contract.origin && contract.origin !== stops[0]?.place) {
-    result.push({name: contract.origin, time: routeTime.exact(contract.start) + " 出发"});
-  }
-  for (const stop of stops) {
-    result.push({name: stop.place, time: routeTime.stop(stop, contract),
-      exactTime: routeTime.exact(stop.start) + "–" + routeTime.exact(stop.end)});
-  }
-  if (contract.destination && contract.destination !== result[result.length - 1]?.name) {
-    const deadline = contract.end - (contract.buffer || 0);
-    result.push({name: contract.destination,
-      time: "预计 " + routeTime.arrival(card.audit?.arrival, deadline) + " 到 · 最晚 " + routeTime.exact(deadline),
-      exactTime: routeTime.exact(card.audit?.arrival)});
-  }
-  return result.map((stop, index) => ({
-    ...stop, coords: coordinates(stop.name),
-    leg: legs.find(leg => leg.origin === result[index - 1]?.name && leg.destination === stop.name)
-  }));
+  return WuhanMap.stops(card,points);
 }
 
 function updateDayButtons(plan) {
