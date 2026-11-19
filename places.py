@@ -1,5 +1,6 @@
 """Named POIs and conservative planning allowances. Map links resolve by city and name."""
 from urllib.parse import urlencode
+from math import ceil, cos, hypot, radians
 import os
 import json
 from pathlib import Path
@@ -28,7 +29,30 @@ for name, zone, minutes, source in json.loads((Path(__file__).parent/"data/guide
     PLACES[name] = dict(name=name, area=zone, zone=zone, minutes=minutes, evidence=source)
 
 
+DATA = Path(__file__).parent / "data"
+ATLAS = json.loads((DATA/"atlas.json").read_text("utf8"))
+ATLAS_POINTS = {**json.loads((DATA/"points.json").read_text("utf8")),
+                **json.loads((DATA/"road_network.json").read_text("utf8"))["anchors"],
+                **json.loads((DATA/"route_points.json").read_text("utf8"))}
+for row in ATLAS:
+    name = row["name"]
+    if name in PLACES or row.get("notice") or name not in ATLAS_POINTS:
+        continue
+    district = row["district"]
+    part = {"江岸区":"汉口","江汉区":"汉口","硚口区":"汉口","汉阳区":"汉阳",
+            "洪山区":"武昌","武昌区":"武昌","青山区":"武昌"}.get(district, district)
+    PLACES[name] = dict(name=name, area=row["address"], zone=district, region=part, minutes=row["minutes"],
+                        evidence=row["id"], directory=True)
+
+
+def city_places():
+    return [{**row, "minutes":PLACES.get(row["name"], row)["minutes"],
+             "point":ATLAS_POINTS.get(row["name"]), "plannable":row["name"] in PLACES} for row in ATLAS]
+
+
 def region(name):
+    if "region" in PLACES[name]:
+        return PLACES[name]["region"]
     zone = PLACES[name]["zone"]
     return next((prefix for prefix in ("汉阳", "汉口") if zone.startswith(prefix)), "武昌")
 
@@ -77,6 +101,12 @@ def locate(query):
 def transit(a,b):
     if a==b:
         return 0
+    if PLACES[a].get("directory") or PLACES[b].get("directory"):
+        start, end = ATLAS_POINTS[a], ATLAS_POINTS[b]
+        # Budget an indirect road journey plus access time. Only used when no verified mode is required.
+        x = (end["lon"] - start["lon"]) * cos(radians((start["lat"] + end["lat"]) / 2))
+        distance_km = 111.2 * hypot(x, end["lat"] - start["lat"])
+        return max(20, 10 * ceil((15 + distance_km * 2.6) / 10))
     x,y = PLACES[a]["zone"], PLACES[b]["zone"]
     if x==y:
         return 25

@@ -12,7 +12,7 @@ from threading import BoundedSemaphore, Lock
 from time import monotonic
 from functools import lru_cache
 from uuid import uuid4
-from places import PLACES
+from places import city_places
 from route_edits import edit_route, editable_places
 from limits import CapacityError, TurnExpired, turn_budget
 from model import ModelError, deepseek_key
@@ -38,6 +38,7 @@ WEB_ASSETS = {
     "/web/chat.js": ("dist/chat.js", "text/javascript; charset=utf-8"),
     "/web/poster.js": ("dist/poster.js", "text/javascript; charset=utf-8"),
     "/web/wuhan-switchboard.webp": ("wuhan-switchboard.webp", "image/webp"),
+    "/web/receptionist.webp": ("receptionist.webp","image/webp"),
     "/web/icon.png": ("icon.png","image/png"),
     "/web/hero-small.webp": ("hero-small.webp","image/webp"),
     "/web/compat.js": ("compat.js","text/javascript; charset=utf-8"),
@@ -162,10 +163,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 self.send_json(200 if ok else 503,{"status":"ok" if ok else "unavailable","model":agent.model.name,
                     "probe":"model_catalog","chunks":len(agent.kb.rows),"tools":[*TOOLS,"location"]})
             elif path=="/city-places":
-                points = {**snapshot("road_network.json")["anchors"], **snapshot("route_points.json")}
-                rows = snapshot("atlas.json")
-                self.send_json(200, [{**row, "minutes":PLACES[row["name"]]["minutes"],
-                                      "point":points[row["name"]]} for row in rows])
+                self.send_json(200,city_places())
             elif path=="/route-places":
                 self.send_json(200,editable_places())
             elif path=="/route-points":

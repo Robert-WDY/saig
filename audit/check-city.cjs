@@ -7,7 +7,11 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
   const click=sel=>js("document.querySelector("+JSON.stringify(sel)+").click()");
   const visible=()=>wait(()=>js("document.querySelectorAll('.atlas-pin').length>0"));
   const current=()=>js("JSON.parse(sessionStorage.getItem('saig-visitor-workspace-v1')).plans[0]");
+  async function search(term) {
+    await js("(()=>{const e=document.querySelector('#poi-search');e.value="+JSON.stringify(term)+";e.dispatchEvent(new Event('input'))})()");
+  }
   async function pin(name) {
+    if (!await js("!!document.querySelector("+JSON.stringify(".atlas-pin[aria-label='"+name+"']")+")")) await search(name);
     const sel=".atlas-pin[aria-label='"+name+"']";
     const pos=await js("(()=>{const r=document.querySelector("+JSON.stringify(sel)+").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+18}})()");
     for(const type of ["mousePressed","mouseReleased"])await cdp("Input.dispatchMouseEvent",{type,...pos,button:"left",clickCount:1});
@@ -15,7 +19,14 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
   }
   await size(1440,940);await go("/city");await visible();
   await wait(()=>js("[...document.querySelectorAll('#atlas-map img, .portrait')].every(i=>i.complete&&i.naturalWidth)"));
-  assert.equal(await js("document.querySelectorAll('.atlas-pin').length"),11);
+  const total=await js("document.querySelector('#lookup').options.length");assert(total>=100);
+  assert(await js("document.querySelectorAll('.poi-cluster').length>0"));
+  await js("document.querySelector('#district').value='黄陂区';document.querySelector('#district').dispatchEvent(new Event('change'))");
+  await search("木兰");assert(await js("document.querySelector('#lookup').options.length")>=4);
+  await search("武汉大学");assert.equal(await js("document.querySelector('#lookup').options.length"),0);
+  await click("#reset-filters");await search("周黑鸭");assert(await js("document.querySelector('#toggle-pick').disabled"));
+  await click("#reset-filters");
+  await go("/city");await visible();await wait(()=>js("document.querySelector('.portrait')?.naturalWidth>0"));
   await shot("01-武汉地图");
   await click("#filters button:nth-child(3)");assert.equal(await js("document.querySelectorAll('.atlas-pin').length"),3);
   await pin("华中师范大学");await click("#toggle-pick");
@@ -27,21 +38,34 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
   await wait(()=>js("!document.querySelector('#open-route').hidden"),15000);
   const updated=await current();assert.equal(updated.cards["1"].order.length,3);assert(updated.cards["1"].order.includes("黄鹤楼"));
   assert.deepEqual(updated.cards["1"].audit.violations,[]);
+  const finish=c=>c.cards["1"].audit.arrival;
+  assert(finish(updated)>finish(created));assert.match(await js("document.querySelector('#feedback').textContent"),/延后/);
   await shot("02-加入已有行程");
   await click("#open-route");await wait(()=>js("document.querySelector('.route-stop .stop-edit')!==null"));
   await js("Array.from(document.querySelectorAll('.route-stop')).find(r=>r.querySelector('strong')?.textContent==='户部巷').querySelector('.stop-edit').click()");
   await click("#apply-stops");await wait(()=>js("!saving && !removed.size"));
   const deleted=await current();assert.deepEqual(deleted.cards["1"].order,updated.cards["1"].order.filter(n=>n!=="户部巷"));
+  assert(finish(deleted)<finish(updated));assert.match(await js("document.querySelector('#edit-feedback').textContent"),/提前/);
   await go("/city");await visible();await click("#filters button:nth-child(4)");await pin("户部巷");await click("#toggle-pick");await click("#apply");
   await wait(()=>js("!document.querySelector('#open-route').hidden"));
   const restored=await current();assert.deepEqual(new Set(restored.cards["1"].order),new Set(updated.cards["1"].order));
   await go("/#workspace");await wait(()=>js("document.querySelector('.plan')?.innerText.includes('地图自选一日游')"));
+  assert(await js("document.querySelector('.message.assistant .receptionist-face')!==null"));
+  assert(await js("new Promise(resolve=>{const im=new Image();im.onload=()=>resolve(im.naturalWidth>0);im.onerror=()=>resolve(false);im.src='/web/receptionist.webp'})"));
 
   await size(390,844,true);await go("/city");await visible();
   assert.equal(await js("document.documentElement.scrollWidth"),390);
   await click("#filters button:nth-child(3)");await click("#expand");await pin("武汉大学");
   assert.equal(await js("document.querySelector('#expand').getAttribute('aria-pressed')"),"false");
   await shot("03-手机地点卡");await js("scrollTo(0,0)");await sleep(300);await shot("04-手机地图");
+  await click("#reset-filters");await click(".poi-cluster");
+  await search("清凉寨");await pin("清凉寨");
+  await js("document.querySelector('#destination').value='new';document.querySelector('#destination').dispatchEvent(new Event('change'))");
+  await click("#toggle-pick");await click("#apply");
+  await wait(()=>js("!document.querySelector('#open-route').hidden"));
+  await click("#open-route");await wait(()=>js("document.querySelector('.route-stop strong')?.textContent==='清凉寨'"));
+  const regional=await js("({center:map.getCenter().lat,zoom:map.getZoom(),bounds:map.getBounds().contains([points['清凉寨'].lat,points['清凉寨'].lon])})");
+  assert(regional.center>31 && regional.bounds);
   assert.deepEqual(exceptions,[]);
-  fs.writeFileSync(join(out,"验收.json"),JSON.stringify({desktop:1440,mobileEmulation:390,places:11,created:created.cards["1"].order,updated:updated.cards["1"].order,afterDelete:deleted.cards["1"].order,afterRestore:restored.cards["1"].order,exceptions},null,2));
+  fs.writeFileSync(join(out,"验收.json"),JSON.stringify({desktop:1440,mobileEmulation:390,places:total,regional,finishMinutes:[created,updated,deleted,restored].map(finish),created:created.cards["1"].order,updated:updated.cards["1"].order,afterDelete:deleted.cards["1"].order,afterRestore:restored.cards["1"].order,exceptions},null,2));
 }).catch(e=>{console.error(e);process.exitCode=1;});

@@ -25,6 +25,17 @@ const routeTime = {
     const rounded = Math.ceil(minutes / 10) * 10;
     return this.exact(Number.isFinite(deadline) && rounded > deadline ? minutes : rounded);
   },
+  change(previous, updated) {
+    const clock = (card) => this.arrival(card.audit.arrival, card.contract.end - (card.contract.buffer || 0));
+    const end = clock(updated);
+    const label = updated.contract.destination ? "抵达" + updated.contract.destination : "结束游览";
+    if (!previous) return "预计约 " + end + " " + label;
+    const old = clock(previous);
+    const delta = updated.audit.arrival - previous.audit.arrival;
+    if (!delta) return "预计约 " + end + " " + label + "，结束时间不变";
+    if (old === end) return "预计仍约 " + end + " " + label + "，精算时刻略有" + (delta > 0 ? "延后" : "提前");
+    return label + (delta > 0 ? "延后" : "提前") + "，约 " + old + " → " + end;
+  },
   duration(minutes) {
     if (!Number.isFinite(minutes)) return "时间待核实";
     if (minutes === 0) return "0 分钟";

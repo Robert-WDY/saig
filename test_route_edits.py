@@ -4,6 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from planning import Invalid, evaluate, new_contract
+from places import city_places, transit
 from route_edits import edit_route
 from storage import Conflict, Sessions
 
@@ -90,3 +91,27 @@ class RouteEditTests(unittest.TestCase):
             with self.assertRaises(Invalid):
                 edit_route(self.store,"empty","new",{"plan":"new","day":"1","add":names,"remove":[]})
             self.assertEqual(self.store.read("empty","read","")[0],0)
+
+    def test_directory_coverage_and_unavailable_places(self):
+        atlas = city_places()
+        self.assertEqual(len({r["official_name"] for r in atlas if r.get("official_name")}),72)
+        self.assertEqual(len(atlas),len({r["name"] for r in atlas}))
+        for r in atlas:
+            if r["plannable"]:
+                self.assertIsNotNone(r["point"])
+                self.assertFalse(r.get("notice"))
+                self.assertGreater(r["minutes"],0)
+        unavailable = next(r["name"] for r in atlas if not r["plannable"])
+        with self.assertRaises(Invalid):
+            edit_route(self.store,"s","blocked",dict(plan="new",day="1",add=[unavailable],remove=[]))
+
+    def test_distant_scenic_stop_respects_a_train_deadline(self):
+        far = transit("清凉寨","汉口站")
+        self.assertGreater(far,transit("江汉路","汉口站"))
+        tight = card(["江汉路"],start=600,end=820,destination="汉口站",buffer=20)
+        original = {**self.state,"days":{"1":tight}}
+        self.store.save("train","seed","seed",0,original,{})
+        with self.assertRaises(Invalid):
+            edit_route(self.store,"train","far",dict(plan="current",day="1",add=["清凉寨"],remove=[],
+                       basis={k:tight[k] for k in ("order","contract")}))
+        self.assertEqual(self.store.read("train","read","")[1]["days"],original["days"])

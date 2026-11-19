@@ -217,3 +217,7 @@ dialog::backdrop { background: #15262188; }
 }
 
 @media (min-width: 821px) { html { overflow-y: scroll; } }
+
+.receptionist-face {display:inline-block;flex:0 0 auto;width:35px;height:35px;border:1px solid #bdd6df;border-radius:50%;background:white url("/web/receptionist.webp") 1% 54% / 309% auto no-repeat}
+.welcome .greeting {display:flex;align-items:center;gap:10px}
+.greeting .receptionist-face {width:52px;height:52px}

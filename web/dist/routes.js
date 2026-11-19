@@ -4,11 +4,13 @@ const base = [30.573, 114.298];
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
 const map = L.map("route-map", { preferCanvas: true, scrollWheelZoom: true, minZoom: 7, maxZoom: 18 }).setView(base, 12);
 map.attributionControl.setPrefix(false);
-const localMap = L.imageOverlay(
-  "/web/wuhan-schematic.png",
-  [[30.39, 114.13], [30.72, 114.55]],
-  { attribution: "武汉本地路线示意 · 河流 Natural Earth", interactive: false }
-).addTo(map);
+const regionBounds = [[30.06, 113.65], [31.42, 115.15]];
+const localMap = L.layerGroup([
+  L.imageOverlay("/web/atlas/wuhan-region.webp", regionBounds, {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org/">OpenFreeMap</a>'
+  }),
+  L.imageOverlay("/web/atlas/wuhan-base.webp", [[30.43, 114.12], [30.69, 114.49]])
+]).addTo(map);
 const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   maxZoom: 18
@@ -133,7 +135,7 @@ document.addEventListener("keydown", (e) => {
 });
 get("city-view").addEventListener("click", () => {
   stopPlayback();
-  map.fitBounds(localMap.getBounds(), { padding: [12, 12], animate: false });
+  map.fitBounds(regionBounds, { padding: [12, 12], animate: false });
 });
 function renderEditor(plan) {
   get("route-editor").hidden = false;
@@ -213,7 +215,7 @@ get("apply-stops").addEventListener("click", async () => {
     added.clear();
     removed.clear();
     requestId = null;
-    get("edit-feedback").textContent = "第 " + dayKey + " 天已重排，行程板已更新。";
+    get("edit-feedback").textContent = "第 " + dayKey + " 天已重排。" + routeTime.change(card, updated.cards[dayKey]) + "。";
   } catch (error) {
     get("edit-feedback").textContent = error.message || "未收到服务器确认，可点击重试。";
   } finally {

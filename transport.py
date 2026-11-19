@@ -7,7 +7,7 @@ from math import ceil
 from pathlib import Path
 import requests
 
-from places import transit,amap_key
+from places import PLACES,transit,amap_key
 from diagnostics import timed
 from limits import remaining
 from trip_contract import settings
@@ -160,7 +160,7 @@ def choose(a,b,mobility,minute,cache):
             if "交通方式" in v:details.append("限定"+"/".join(LABEL[x] for x in sorted(allowed)))
             raise ValueError(f"{a}到{b}缺少满足{'、'.join(details)}的可核实方案")
         return dict(origin=a,destination=b,minutes=transit(a,b),mode="estimate",changes=None,walk_m=None,
-                    group_fare=None,fare_bound=None,source="路网资料不足，按片区预留")
+                    group_fare=None,fare_bound=None,source=("按两地距离粗估，实际交通待核" if PLACES[a].get("directory") or PLACES[b].get("directory") else "路网资料不足，按片区预留"))
     def rank(row):
         inf=float("inf")
         if budget is not None: return (row["fare_bound"],row["minutes"])

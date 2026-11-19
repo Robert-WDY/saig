@@ -37,6 +37,13 @@ class Knowledge:
     def __init__(self, curated=None):
         self.curated = curated if curated is not None else json.loads((DATA/"official.json").read_text(encoding="utf8"))
         self.rows = list(self.curated)
+        from places import ATLAS
+        for place in ATLAS:
+            if "official_name" in place:
+                self.rows.append(dict(id=place["id"], category="attraction", title=place["official_name"]+" · 名录",
+                    text=f'{place["name"]}收录于{place["official_name"]}，名录等级 {place["grade"]}。地点：{place["address"]}。'+place.get("notice",""),
+                    locator=place["official_name"], source=place["official_source"], edition="名录核对 2026-11-19"))
+
         self.rows.extend(json.loads(s) for s in (DATA/"handbooks.jsonl").read_text(encoding="utf8").splitlines())
         from trip_contract import GUIDES,CITY_SOURCE
         refs={r["id"]:r for r in self.rows}

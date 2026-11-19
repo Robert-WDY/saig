@@ -1,8 +1,9 @@
 "use strict";
 const el = id => document.getElementById(id);
 const key = "saig-visitor-workspace-v1";
-const map = L.map("atlas-map",{minZoom:9,maxZoom:16,zoomSnap:0.25,scrollWheelZoom:true,maxBounds:[[30.37,114.06],[30.76,114.56]]});
+const map = L.map("atlas-map",{minZoom:7,maxZoom:16,zoomSnap:0.25,scrollWheelZoom:true,maxBounds:[[29.95,113.52],[31.55,115.28]]});
 map.attributionControl.setPrefix(false);
+L.imageOverlay("/web/atlas/wuhan-region.webp",[[30.06,113.65],[31.42,115.15]]).addTo(map);
 L.imageOverlay("/web/atlas/wuhan-base.webp",[[30.43,114.12],[30.69,114.49]],{
   attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org/">OpenFreeMap</a>'
 }).addTo(map);
@@ -22,10 +23,15 @@ function link(title,href) {
   const a=node("a",title);a.href=href;a.target="_blank";a.rel="noopener noreferrer";return a;
 }
 const kinds={"大学":"university","景点":"sight","美食":"food"};
-function visible(){return rows.filter(r=>category==="全部"||r.category===category);}
+function visible(){
+  const query=el("poi-search").value.trim().toLowerCase(), district=el("district").value, topic=el("topic").value;
+  return rows.filter(r=>(category==="全部" || r.category===category) && (!district || r.district===district)
+    && (!topic || r.topic===topic) && (!el("only-plan").checked || r.plannable)
+    && (!query || [r.name,r.official_name,r.address,r.district,r.area,r.highlights,r.topic].join(" ").toLowerCase().includes(query)));
+}
 function coords(r){return [r.point.lat,r.point.lon];}
 function fit() {
-  const current=visible();
+  const current=visible().filter(r=>r.point);
   if(!current.length)return;
   map.fitBounds(L.latLngBounds(current.map(coords)),{paddingTopLeft:[54,54],paddingBottomRight:[54,60],maxZoom:14,animate:false});
 }
@@ -38,7 +44,23 @@ function expand(active) {
 function renderPins() {
   pins.clearLayers();
   const used=[], offsets=[[0,0],[0,-58],[0,58],[68,0],[-68,0],[66,-51],[-66,51],[-66,-51],[66,51]];
-  for(const row of visible()) {
+  const matches=visible().filter(r=>r.point), buckets=new Map(), singles=[];
+  for(const row of matches) {
+    if(row===selected || matches.length<15 || map.getZoom()>=15){singles.push(row);continue;}
+    const pixel=map.project(coords(row)), key=Math.floor(pixel.x/86)+"/"+Math.floor(pixel.y/68);
+    if(!buckets.has(key))buckets.set(key,[]);
+    buckets.get(key).push(row);
+  }
+  for(const group of buckets.values()) {
+    if(group.length===1){singles.push(group[0]);continue;}
+    const bounds=L.latLngBounds(group.map(coords));
+    const icon=L.divIcon({className:"poi-cluster",html:String(group.length),iconSize:[35,35],iconAnchor:[17,17]});
+    L.marker(bounds.getCenter(),{icon,title:"展开 "+group.length+" 个地点"}).addTo(pins).on("click",()=>{
+      const zoom=Math.min(16,Math.max(map.getZoom()+1,map.getBoundsZoom(bounds,false,[100,100])));
+      map.setView(bounds.getCenter(),zoom,{animate:false});
+    });
+  }
+  for(const row of singles) {
     const pos=coords(row),base=map.latLngToLayerPoint(pos);
     const offset=offsets.find(([x,y])=>!used.some(p=>Math.abs(p.x-base.x-x)<75 && Math.abs(p.y-base.y-y)<52))||offsets[0];
     const center=base.add(offset);used.push(center);
@@ -47,7 +69,8 @@ function renderPins() {
       L.polyline([pos,pinPos],{weight:1.5,opacity:0.8,color:"#557769",interactive:false}).addTo(pins);
       L.circleMarker(pos,{radius:2.5,color:"#426555",interactive:false}).addTo(pins);
     }
-    const picture=node("img");picture.src="/web/atlas/"+row.id+"-pin.webp";picture.alt="";
+    const picture=row.photo?node("img"):node("span",({"公园山水":"山","展馆文博":"馆","亲子游乐":"游","地方美食":"食"})[row.topic]||"景","pin-symbol");
+    if(row.photo){picture.src="/web/atlas/"+row.id+"-pin.webp";picture.alt="";}
     const box=node("div");box.append(picture,node("b",row.name));
     const icon=L.divIcon({className:"atlas-pin "+kinds[row.category]+(selected===row?" selected":"")+(choices.has(row.name)?" chosen":""),html:box.innerHTML,iconSize:[78,56],iconAnchor:[39,27]});
     const marker=L.marker(pinPos,{icon,title:row.name,alt:row.name,zIndexOffset:selected===row?600:0}).addTo(pins);
@@ -61,18 +84,29 @@ function renderPins() {
 }
 function select(row) {
   selected=row;el("lookup").value=row.id;
-  const img=node("img",null,"portrait");img.src="/web/atlas/"+row.id+".webp";img.alt=row.photo.caption;
+  const img=row.photo?node("img",null,"portrait"):null;
+  if(img){img.src="/web/atlas/"+row.id+".webp";img.alt=row.photo.caption;}
   const copy=node("div",null,"detail-copy"), credits=node("details");
-  credits.append(node("summary","资料与照片来源"),link(row.source_label,row.source),document.createElement("br"),
-    link(row.photo.caption+" · "+row.photo.artist,row.photo.source),document.createTextNode(" · "),
-    row.photo.license_url?link(row.photo.license,row.photo.license_url):document.createTextNode(row.photo.license));
+  credits.append(node("summary",row.photo?"资料与照片来源":"地点资料来源"),link(row.source_label,row.source));
+  if(row.official_source && row.source!==row.official_source) credits.append(document.createElement("br"),link("武汉市文旅局景区名录",row.official_source));
+  if(row.point?.source) credits.append(document.createElement("br"),link(row.point.label||"地图参考位置",row.point.source));
+  if(row.photo)credits.append(document.createElement("br"),link(row.photo.caption+" · "+row.photo.artist,row.photo.source),
+    document.createTextNode(" · "),row.photo.license_url?link(row.photo.license,row.photo.license_url):document.createTextNode(row.photo.license));
   const toggle=node("button");toggle.id="toggle-pick";toggle.onclick=()=>toggleChoice(row.name);
-  copy.append(node("small",row.category+" / "+row.area),node("h2",row.name),node("p",row.highlights+"　·　建议 "+row.minutes+" 分钟","tags"),node("p",row.description));
+  copy.append(node("small",row.category+" / "+row.district+(row.grade?" · "+row.grade:"")),node("h2",row.name),node("p",row.highlights+"　·　建议 "+row.minutes+" 分钟","tags"),node("p",row.description));
   if(row.category==="大学")copy.append(node("small","校园访客预约与开放安排请查学校当期公告。"));
-  copy.append(credits,toggle);el("detail").replaceChildren(img,copy);renderChoice();renderPins();
+  if(row.notice)copy.append(node("p",row.notice,"poi-notice"));
+  copy.append(credits,toggle);el("detail").replaceChildren(...(img?[img,copy]:[copy]));renderChoice();renderPins();
 }
 function fillPlaces() {
-  el("lookup").replaceChildren(...visible().map(r=>new Option(r.name+" · "+r.area,r.id)));select(visible()[0]);fit();
+  const matches=visible();
+  el("matches").textContent=matches.length+" / "+rows.length+" 处";
+  el("reset-filters").hidden=matches.length===rows.length && category==="全部" && !el("poi-search").value;
+  el("lookup").replaceChildren(...matches.map(r=>new Option(r.name+" · "+r.district,r.id)));
+  el("lookup").disabled=!matches.length;
+  if(matches.length){select(matches.includes(selected)?selected:matches[0]);fit();}
+  else{selected=null;el("detail").replaceChildren(node("p","没有符合条件的地点，可以清除筛选或换个关键词。","detail-copy"));renderPins();}
+
 }
 function target(){return workspace.plans.find(p=>p.id===el("destination").value);}
 function card(){return target()?.cards[el("atlas-day").value];}
@@ -99,7 +133,7 @@ function renderChoice() {
   const toggle=el("toggle-pick");
   if(toggle&&selected){
     const already=existing.includes(selected.name),picked=choices.has(selected.name);
-    toggle.textContent=already?"已在当天行程":picked?"已选中 · 移出选点":"＋ 选入行程";toggle.disabled=busy||already;
+    toggle.textContent=already?"已在当天行程":picked?"已选中 · 移出选点":"＋ 选入行程";if(!selected.plannable)toggle.textContent="仅供浏览 · 暂不编排行程";toggle.disabled=busy||already||!selected.plannable;
     toggle.setAttribute("aria-pressed",String(picked||already));
   }
   el("picked").replaceChildren(...[...choices].map(n=>{const b=node("button",n+(existing.includes(n)?"（已在行程）":"")+" ×");b.disabled=busy;b.onclick=()=>toggleChoice(n);return b;}));
@@ -120,7 +154,7 @@ el("apply").onclick=async()=>{
     const result=await res.json();if(!res.ok)throw new Error(result.error||"规划失败，请重新选择。");
     saveMapResult(workspace,result,day);
     choices.clear();attempt=null;fillPlans(result.plan_id,day);renderPins();
-    el("feedback").textContent="已更新第 "+day+" 天："+result.cards[day].order.join(" → ");
+    el("feedback").textContent="已更新第 "+day+" 天："+result.cards[day].order.join(" → ")+"。"+routeTime.change(old,result.cards[day])+"。";
     const route=el("open-route");route.href="/routes?plan="+encodeURIComponent(result.plan_id)+"&day="+day;route.hidden=false;
   }catch(err){el("feedback").textContent=err.message||"暂未收到结果，可再次提交。";}
   finally{busy=false;renderChoice();}
@@ -130,7 +164,14 @@ el("filters").onclick=e=>{
   category=e.target.textContent;
   el("filters").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b===e.target)));fillPlaces();
 };
-el("lookup").onchange=()=>{const r=rows.find(r=>r.id===el("lookup").value);select(r);map.panTo(coords(r));};
+el("lookup").onchange=()=>{const r=rows.find(r=>r.id===el("lookup").value);select(r);if(r.point)map.setView(coords(r),Math.max(13,map.getZoom()));};
+el("poi-search").oninput=fillPlaces;
+for(const id of ["district","topic","only-plan"])el(id).onchange=fillPlaces;
+el("reset-filters").onclick=()=>{
+  for(const id of ["district","topic","poi-search"])el(id).value="";
+  el("only-plan").checked=false;
+  el("filters").querySelector("button").click();
+};
 el("overview").onclick=fit;el("expand").onclick=()=>expand(el("expand").getAttribute("aria-pressed")!=="true");
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&el("expand").getAttribute("aria-pressed")==="true")expand(false);});
 el("destination").onchange=()=>{clearReceipt();fillDays();};el("atlas-day").onchange=()=>{clearReceipt();renderChoice();};
@@ -139,4 +180,6 @@ window.addEventListener("pageshow",e=>{if(e.persisted)location.reload();});
 let previousWidth=window.innerWidth;
 window.addEventListener("resize",()=>{map.invalidateSize();if(window.innerWidth!==previousWidth){previousWidth=window.innerWidth;fit();}});
 fillPlans(workspace.mapSelection?.plan,workspace.mapSelection?.day);
-fetch("/city-places").then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{rows=data;fillPlaces();}).catch(()=>{el("feedback").textContent="地点资料暂未加载，请刷新页面。";});
+fetch("/city-places").then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{rows=data;
+  for(const id of ["district","topic"])for(const value of [...new Set(rows.map(r=>r[id]))].sort((a,b)=>a.localeCompare(b,"zh-CN")))el(id).append(new Option(value,value));
+  fillPlaces();}).catch(()=>{el("feedback").textContent="地点资料暂未加载，请刷新页面。";});

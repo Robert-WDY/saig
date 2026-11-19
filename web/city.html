@@ -3,11 +3,16 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#12399d">
 <title>武汉地图 · 武汉接线台</title>
 <link rel="icon" href="/web/icon.png"><link rel="stylesheet" href="/web/vendor/leaflet.css"><link rel="stylesheet" href="/web/style.css"><link rel="stylesheet" href="/web/city.css">
-<script defer src="/web/vendor/leaflet.js"></script><script defer src="/web/compat.js"></script><script defer src="/web/city.js"></script>
+<script defer src="/web/vendor/leaflet.js"></script><script defer src="/web/compat.js"></script><script defer src="/web/route-time.js"></script><script defer src="/web/city.js"></script>
 </head><body><a class="skip" href="#atlas-title">跳到武汉地图</a><!-- shared-header -->
 <main class="frame atlas">
 <header class="atlas-heading"><h1 id="atlas-title">武汉地图</h1><div id="filters" aria-label="地点类别"><button aria-pressed="true">全部</button><button aria-pressed="false">景点</button><button aria-pressed="false">大学</button><button aria-pressed="false">美食</button></div></header>
-<div class="atlas-layout"><section class="atlas-canvas" aria-label="武汉地点地图">
+<section class="atlas-filters" aria-label="筛选武汉地点">
+<input type="search" id="poi-search" aria-label="搜索地点或地址" placeholder="搜索地点、地址或美食">
+<select id="district" aria-label="所在区域"><option value="">全部区域</option></select>
+<select id="topic" aria-label="游览主题"><option value="">全部主题</option></select>
+<label><input type="checkbox" id="only-plan"> 可加入行程</label><output id="matches" aria-live="polite"></output><button id="reset-filters" hidden>清除筛选</button>
+</section><div class="atlas-layout"><section class="atlas-canvas" aria-label="武汉地点地图">
 <div id="atlas-map" aria-label="可缩放的武汉地点地图"></div>
 <div class="map-actions"><button id="overview">查看全貌</button><button id="expand" aria-pressed="false">展开大图</button></div>
 </section>

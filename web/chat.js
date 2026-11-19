@@ -165,7 +165,7 @@ function renderMessages() {
     const bubble = node("div", "bubble");
     if (message.role === "user") bubble.textContent = message.text;
     else {
-      const mark = node("span", "mark", "接");
+      const mark = node("span", "receptionist-face");
       mark.setAttribute("aria-hidden", "true");
       entry.append(mark);
       bubble.setAttribute("aria-label", "接待员的回答");
