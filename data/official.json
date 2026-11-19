@@ -70,5 +70,23 @@
     "locator": "武汉过早",
     "source": "https://sw.wuhan.gov.cn/xwdt/gzdt/202610/t20261008_2857351.shtml",
     "edition": "核对 2026-11-18"
+  },
+  {
+    "id": "university-hust",
+    "category": "attraction",
+    "title": "华中科技大学",
+    "text": "主校区坐落在喻家山麓。以校门为起点，沿林荫道感受光谷的大学生活。",
+    "locator": "学校简介",
+    "source": "https://hust.edu.cn/xxgk/xxjj.htm",
+    "edition": "核对 2026-11-19"
+  },
+  {
+    "id": "university-ccnu",
+    "category": "attraction",
+    "title": "华中师范大学",
+    "text": "来桂子山认识武汉的师范教育与校园文化，可以把这里安排在武昌高校一线。",
+    "locator": "学校简介",
+    "source": "https://www.ccnu.edu.cn/xxgk/xxjj.htm",
+    "edition": "核对 2026-11-19"
   }
 ]

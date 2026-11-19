@@ -44,7 +44,7 @@ async function checkConnection() {
 }
 
 function markNavigation() {
-  var target = location.pathname === "/routes" ? "/routes" : location.hash === "#workspace" ? "/#workspace" : "/#assistant";
+  var target = ["/city","/routes"].includes(location.pathname) ? location.pathname : location.hash === "#workspace" ? "/#workspace" : "/#assistant";
   document.querySelectorAll(".nav-item").forEach(function (link) {
     var active = link.pathname + link.hash === target;
     link.classList.toggle("current", active);
@@ -54,3 +54,20 @@ function markNavigation() {
 markNavigation();
 window.addEventListener("hashchange", markNavigation);
 checkConnection();
+
+function saveMapResult(workspace, updated, day) {
+  var id = updated.plan_id;
+  var previous = workspace.plans.find(function (p) { return p.id === id; });
+  var replacement = {id:id, title:previous ? previous.title : updated.title, cards:updated.cards,
+    version:updated.version, replannedDays:previous ? [Number(day)] : [], beforeCounts:{}};
+  if (previous) replacement.beforeCounts[day] = previous.cards[day].order.length;
+  workspace.plans = workspace.plans.filter(function (p) {return id !== "current" || p.id !== "preview";});
+  var index = workspace.plans.findIndex(function (p) {return p.id === id;});
+  if (index < 0) workspace.plans.push(replacement); else workspace.plans[index] = replacement;
+  var comparison = workspace.comparison;
+  if (comparison && comparison.versions && comparison.versions.some(function (v) {return v.option_id === id;})) comparison.outdated = true;
+  workspace.mapSelection = {plan:id, day:day};
+  workspace.messages.push({role:"user",text:updated.action},{role:"assistant",result:{answer:updated.answer}});
+  sessionStorage.setItem("saig-visitor-workspace-v1", JSON.stringify(workspace));
+  return replacement;
+}

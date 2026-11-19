@@ -180,14 +180,7 @@ get("apply-stops").addEventListener("click", async () => {
       }})});
     const updated = await response.json();
     if (!response.ok) throw new Error(updated.error || "重排未完成，原行程已保留。");
-    const replacement = {...plan,cards:updated.cards,version:updated.version,replannedDays:[Number(dayKey)],
-      beforeCounts:{[dayKey]:card.order.length}};
-    workspace.plans = workspace.plans.map(p => p.id === plan.id ? replacement : p)
-      .filter(p => plan.id !== "current" || p.id !== "preview");
-    if (workspace.comparison?.versions?.some(v => v.option_id === plan.id)) workspace.comparison = {...workspace.comparison, outdated:true};
-    workspace.mapSelection = {plan:plan.id,day:dayKey};
-    workspace.messages.push({role:"user",text:updated.action},{role:"assistant",result:{answer:updated.answer}});
-    sessionStorage.setItem(key,JSON.stringify(workspace));
+    const replacement = saveMapResult(workspace, updated, dayKey);
     Object.assign(plan,replacement);
     if (plan.id === "current") {
       const stale = plans.findIndex(p => p.id === "preview");

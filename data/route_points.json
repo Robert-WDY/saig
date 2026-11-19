@@ -22,5 +22,21 @@
     "source": "https://www.openstreetmap.org/node/1880527338",
     "venue_source": "https://news.cjn.cn/cqpd/lbt_19985/202307/t4637936.htm",
     "usage": "总馆所在路口参考点"
+  },
+  "华中科技大学": {
+    "lat": 30.51,
+    "lon": 114.41,
+    "crs": "WGS84",
+    "label": "华中科技大学",
+    "source": "https://zh.wikipedia.org/wiki/%E5%8D%8E%E4%B8%AD%E7%A7%91%E6%8A%80%E5%A4%A7%E5%AD%A6",
+    "usage": "校园区域参考点"
+  },
+  "华中师范大学": {
+    "lat": 30.518,
+    "lon": 114.357,
+    "crs": "WGS84",
+    "label": "华中师范大学",
+    "source": "https://zh.wikipedia.org/wiki/%E5%8D%8E%E4%B8%AD%E5%B8%88%E8%8C%83%E5%A4%A7%E5%AD%A6",
+    "usage": "校园区域参考点"
   }
 }

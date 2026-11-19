@@ -63,3 +63,30 @@ class RouteEditTests(unittest.TestCase):
         state=self.store.read("s","read","")[1]
         self.assertEqual(state["days"],self.state["days"])
         self.assertEqual(state["options"],self.state["options"])
+
+    def test_first_map_selection_persists_for_chat_and_retry(self):
+        change = {"plan":"new","day":"1","add":["华中师范大学","户部巷"],"remove":[]}
+        result = edit_route(self.store,"new-visitor","one",change)
+        self.assertEqual(result,edit_route(self.store,"new-visitor","one",change))
+        self.assertEqual(result["plan_id"],"current")
+        card = result["cards"]["1"]
+        self.assertEqual(set(card["order"]),set(change["add"]))
+        self.assertEqual(card["audit"]["violations"],[])
+        state = self.store.read("new-visitor","read","")[1]
+        self.assertEqual(state["days"],result["cards"])
+        self.assertEqual(len(state["turns"]),1)
+
+    def test_map_creates_independent_option_with_existing_preview(self):
+        change = {"plan":"new","day":"1","add":["武汉大学"],"remove":[]}
+        result = edit_route(self.store,"s","new-option",change)
+        state = self.store.read("s","read","")[1]
+        for slot in ("days","pending_days"):
+            self.assertEqual(state[slot],self.state[slot])
+        self.assertEqual(state["options"]["two"],self.state["options"]["two"])
+        self.assertEqual(state["options"][result["plan_id"]]["days"],result["cards"])
+
+    def test_malformed_first_selection_writes_nothing(self):
+        for names in [[],["未知景点"],["武汉大学","武汉大学"]]:
+            with self.assertRaises(Invalid):
+                edit_route(self.store,"empty","new",{"plan":"new","day":"1","add":names,"remove":[]})
+            self.assertEqual(self.store.read("empty","read","")[0],0)

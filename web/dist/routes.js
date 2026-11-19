@@ -176,7 +176,7 @@ get("discard-stops").addEventListener("click", () => {
   renderRoute(selected(), false);
 });
 get("apply-stops").addEventListener("click", async () => {
-  var _a, _b, _c;
+  var _a;
   if (saving || !(added.size || removed.size)) return;
   const plan = selected();
   const card = plan.cards[day];
@@ -201,24 +201,13 @@ get("apply-stops").addEventListener("click", async () => {
     });
     const updated = await response.json();
     if (!response.ok) throw new Error(updated.error || "重排未完成，原行程已保留。");
-    const replacement = {
-      ...plan,
-      cards: updated.cards,
-      version: updated.version,
-      replannedDays: [Number(dayKey)],
-      beforeCounts: { [dayKey]: card.order.length }
-    };
-    workspace.plans = workspace.plans.map((p) => p.id === plan.id ? replacement : p).filter((p) => plan.id !== "current" || p.id !== "preview");
-    if ((_b = (_a = workspace.comparison) == null ? void 0 : _a.versions) == null ? void 0 : _b.some((v) => v.option_id === plan.id)) workspace.comparison = { ...workspace.comparison, outdated: true };
-    workspace.mapSelection = { plan: plan.id, day: dayKey };
-    workspace.messages.push({ role: "user", text: updated.action }, { role: "assistant", result: { answer: updated.answer } });
-    sessionStorage.setItem(key, JSON.stringify(workspace));
+    const replacement = saveMapResult(workspace, updated, dayKey);
     Object.assign(plan, replacement);
     if (plan.id === "current") {
       const stale = plans.findIndex((p) => p.id === "preview");
       if (stale >= 0) {
         plans.splice(stale, 1);
-        (_c = selector.querySelector('option[value="preview"]')) == null ? void 0 : _c.remove();
+        (_a = selector.querySelector('option[value="preview"]')) == null ? void 0 : _a.remove();
       }
     }
     added.clear();

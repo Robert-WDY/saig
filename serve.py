@@ -12,6 +12,7 @@ from threading import BoundedSemaphore, Lock
 from time import monotonic
 from functools import lru_cache
 from uuid import uuid4
+from places import PLACES
 from route_edits import edit_route, editable_places
 from limits import CapacityError, TurnExpired, turn_budget
 from model import ModelError, deepseek_key
@@ -42,6 +43,15 @@ WEB_ASSETS = {
     "/web/compat.js": ("compat.js","text/javascript; charset=utf-8"),
     "/web/wuhan-schematic.png": ("wuhan-schematic.png","image/png"),
 }
+
+
+WEB_ASSETS.update({
+    "/city": ("city.html", "text/html; charset=utf-8"),
+    "/web/city.js": ("dist/city.js", "text/javascript; charset=utf-8"),
+    "/web/city.css": ("city.css", "text/css; charset=utf-8"),
+})
+for photo in (WEB_DIR / "atlas").glob("*.webp"):
+    WEB_ASSETS["/web/atlas/"+photo.name] = ("atlas/"+photo.name, "image/webp")
 
 
 @lru_cache(maxsize=100)
@@ -151,6 +161,11 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 ok=model_ready()
                 self.send_json(200 if ok else 503,{"status":"ok" if ok else "unavailable","model":agent.model.name,
                     "probe":"model_catalog","chunks":len(agent.kb.rows),"tools":[*TOOLS,"location"]})
+            elif path=="/city-places":
+                points = {**snapshot("road_network.json")["anchors"], **snapshot("route_points.json")}
+                rows = snapshot("atlas.json")
+                self.send_json(200, [{**row, "minutes":PLACES[row["name"]]["minutes"],
+                                      "point":points[row["name"]]} for row in rows])
             elif path=="/route-places":
                 self.send_json(200,editable_places())
             elif path=="/route-points":

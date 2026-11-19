@@ -14,7 +14,7 @@ node_modules/
 docs/project-memory/
 audit/*
 !audit/*.py
-!audit/check-frontend.cjs
+!audit/*.cjs
 data/handbooks.jsonl
 data/eval*.json
 web/wuhan.jpg

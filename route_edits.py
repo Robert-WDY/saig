@@ -1,10 +1,11 @@
 """Apply map controls to the authoritative itinerary in the visitor's session."""
 from copy import deepcopy
 import json
+from uuid import uuid4
 
 from deliverables import check_days, choose
 from places import PLACES
-from planning import Invalid, solve, transport_cache
+from planning import Invalid, new_contract, solve, transport_cache
 from storage import Conflict
 
 
@@ -21,6 +22,38 @@ def edit_route(store, sid, request_id, change):
     option_id, day = change.get("plan"), change.get("day")
     if not isinstance(option_id, str) or not isinstance(day, str):
         raise Invalid("请选择要修改的方案和日期。")
+    add, remove = change.get("add"), change.get("remove")
+    for names in (add, remove):
+        if not isinstance(names, list) or len(names)>12 or any(not isinstance(n,str) or n not in PLACES or not PLACES[n]["minutes"] for n in names):
+            raise Invalid("请选择目录中的游览站点。")
+        if len(set(names)) != len(names):
+            raise Invalid("同一站点重复。")
+    if option_id == "new":
+        if day != "1" or not add or remove:
+            raise Invalid("请选择新行程的游览地点。")
+        c = {**new_contract(), "must":add, "mobility":{"rules":[]}}
+        token = transport_cache.set({})
+        try:
+            order, audit = solve(c, [], add)
+            card = dict(contract=c, order=order, audit=audit, guide="map-picked", guide_source=None,
+                        guide_consulted=None, estimate="从首站算起，转场时间为估算。",
+                        diff=dict(added=add, removed=[], retimed=[]))
+            days = {"1":card}
+            check_days(days, 1)
+        finally:
+            transport_cache.reset(token)
+        if state["days"] or state.get("options") or state.get("pending_days"):
+            plan_id = "option_" + uuid4().hex[:12]
+            number = len(state.get("options", {})) + 1
+            title = f"地图自选一日游 · {number}"
+            version = 1
+            state.setdefault("options", {})[plan_id] = dict(option_id=plan_id, title=title, days=days, version=version)
+        else:
+            choose(state, days)
+            plan_id, title, version = "current", "地图自选一日游", revision + 1
+        action = "从武汉地图创建《" + title + "》"
+        answer = "第1天：" + " → ".join(order) + "。"
+        return finish_edit(store, sid, key, question, revision, state, days, plan_id, title, version, action, answer)
     option = state.get("options", {}).get(option_id)
     if option_id == "current":
         days = state["days"]
@@ -33,12 +66,6 @@ def edit_route(store, sid, request_id, change):
     old = days[day]
     if change.get("basis") != {"order": old["order"], "contract": old["contract"]}:
         raise Conflict("这天的行程已经变更。请在接待台重新查看最新行程后再编辑。")
-    add, remove = change.get("add"), change.get("remove")
-    for names in (add, remove):
-        if not isinstance(names, list) or len(names)>12 or any(not isinstance(n,str) or n not in PLACES or not PLACES[n]["minutes"] for n in names):
-            raise Invalid("请选择目录中的游览站点。")
-        if len(set(names)) != len(names):
-            raise Invalid("同一站点重复。")
     prior = old["order"]
     if not (add or remove) or set(add) & set(prior) or not set(remove) <= set(prior):
         raise Invalid("请检查新增或移除的站点。")
@@ -81,6 +108,11 @@ def edit_route(store, sid, request_id, change):
     changes = "，".join(s for s in ("添加"+"、".join(add) if add else "", "移除"+"、".join(remove) if remove else "") if s)
     action = f"地图编辑《{title}》第{day}天：{changes}"
     answer = "重排后："+" → ".join(order)+"。"
+    return finish_edit(store, sid, key, question, revision, state, revised, option_id, title,
+                       option["version"] if option else revision+1, action, answer)
+
+
+def finish_edit(store, sid, key, question, revision, state, cards, plan_id, title, version, action, answer):
     state["turns"] = (state["turns"]+[{"user":action,"answer":answer,"offered_places":[],"sources":[]}])[-12:]
-    result = {"cards":revised,"version":option["version"] if option else revision+1,"action":action,"answer":answer}
+    result = {"cards":cards,"plan_id":plan_id,"title":title,"version":version,"action":action,"answer":answer}
     return store.save(sid,key,question,revision,state,result)

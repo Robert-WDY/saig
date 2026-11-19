@@ -1,0 +1,189 @@
+[
+  {
+    "id": "whu",
+    "name": "武汉大学",
+    "category": "大学",
+    "area": "珞珈山",
+    "highlights": "老斋舍 · 早期建筑",
+    "description": "到珞珈山看老斋舍与武汉大学早期建筑，沿坡道散步。",
+    "source": "https://www.whu.edu.cn/whsh.htm",
+    "source_label": "学校官网",
+    "photo": {
+      "artist": "Howchou",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Wuhan_University_Sakura_Castle.jpg",
+      "caption": "武汉大学樱顶"
+    }
+  },
+  {
+    "id": "hust",
+    "name": "华中科技大学",
+    "category": "大学",
+    "area": "喻家山",
+    "highlights": "林荫校园 · 光谷",
+    "description": "主校区坐落在喻家山麓。从校门出发，沿树荫慢慢走，适合和光谷安排在同一段行程。",
+    "source": "https://hust.edu.cn/xxgk/xxjj.htm",
+    "source_label": "学校官网",
+    "photo": {
+      "artist": "Glrain",
+      "license": "CC BY-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:%E5%8D%8E%E7%A7%91%E6%A0%A1%E9%97%A8.JPG",
+      "caption": "华中科技大学校门"
+    }
+  },
+  {
+    "id": "ccnu",
+    "name": "华中师范大学",
+    "category": "大学",
+    "area": "桂子山",
+    "highlights": "桂子山 · 校园建筑",
+    "description": "来桂子山认识武汉的师范教育与校园文化。可以把这站与武昌其他高校串在一起。",
+    "source": "https://www.ccnu.edu.cn/xxgk/xxjj.htm",
+    "source_label": "学校官网",
+    "photo": {
+      "artist": "Wangyou0720 at Chinese Wikipedia",
+      "license": "Public domain",
+      "license_url": "",
+      "source": "https://commons.wikimedia.org/wiki/File:CN-CCNU-old_library.JPG",
+      "caption": "华中师范大学校园建筑"
+    }
+  },
+  {
+    "id": "tower",
+    "name": "黄鹤楼",
+    "category": "景点",
+    "area": "蛇山",
+    "highlights": "登楼远眺 · 长江",
+    "description": "从武昌蛇山登楼，看长江从三镇之间穿过。想拍长江大桥，可以给登楼和观景分别留出时间。",
+    "source": "https://shuming-official-file.markyin.com/static/file/SAIGS01CompetitionMaterials.zip",
+    "source_label": "赛事武汉手册 · 第6页",
+    "photo": {
+      "artist": "MonsieurRoi",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "source": "https://commons.wikimedia.org/wiki/File:CN_-_Hubei_-_Wuhan_-_Kranichpagode.jpg",
+      "caption": "黄鹤楼"
+    }
+  },
+  {
+    "id": "customs",
+    "name": "江汉关",
+    "category": "景点",
+    "area": "汉口江边",
+    "highlights": "钟楼 · 沿江建筑",
+    "description": "沿江汉路走到江边，在这里看钟楼与沿江建筑。若只想散步，外观也适合作为汉口段的终点。",
+    "source": "https://www.wuhan.gov.cn/zwgk/xxgk/zfgz_new/202504/P020260407558818018018.pdf",
+    "source_label": "武汉三镇与江汉路",
+    "photo": {
+      "artist": "ScareCriterion12",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "source": "https://commons.wikimedia.org/wiki/File:%E6%B1%9F%E6%B1%89%E5%85%B3%E6%AD%A3%E7%AB%8B%E9%9D%A2%E4%BE%A7%E5%90%912023.4_(cropped).jpg",
+      "caption": "江汉关大楼"
+    }
+  },
+  {
+    "id": "lake",
+    "name": "东湖听涛",
+    "category": "景点",
+    "area": "东湖",
+    "highlights": "湖岸漫步 · 休闲",
+    "description": "想放慢节奏，可以在听涛景区留一段沿湖散步的时间，再安排武昌一侧的下一个地点。",
+    "source": "https://shuming-official-file.markyin.com/static/file/SAIGS01CompetitionMaterials.zip",
+    "source_label": "赛事武汉手册 · 第202页",
+    "photo": {
+      "artist": "Zheng Zhou",
+      "license": "CC BY-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:East_Lake_Wuhan.JPG",
+      "caption": "武汉东湖湖景"
+    }
+  },
+  {
+    "id": "lute",
+    "name": "古琴台",
+    "category": "景点",
+    "area": "汉阳",
+    "highlights": "知音文化 · 琴台",
+    "description": "到汉阳听伯牙与子期的知音故事。想和武昌、汉口串联游览，记得给跨江交通留出时间。",
+    "source": "https://shuming-official-file.markyin.com/static/file/SAIGS01CompetitionMaterials.zip",
+    "source_label": "赛事武汉手册 · 第200页",
+    "photo": {
+      "artist": "kiraclyne",
+      "license": "CC BY-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Lute_Platform.jpg",
+      "caption": "汉阳古琴台"
+    }
+  },
+  {
+    "id": "liroad",
+    "name": "黎黄陂路",
+    "category": "景点",
+    "area": "汉口老城",
+    "highlights": "街头摄影 · 老建筑",
+    "description": "沿街步行看老建筑。可以从这里接着往江边走，也可以留出时间慢慢拍照。",
+    "source": "https://sw.wuhan.gov.cn/xwdt/gzdt/202610/t20261008_2857351.shtml",
+    "source_label": "汉口老城慢逛半日",
+    "photo": {
+      "artist": "Zhangmoon618",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "source": "https://commons.wikimedia.org/wiki/File:LiHuangPi_Road%EF%BC%8CWuhan%EF%BC%8CChina.jpg",
+      "caption": "黎黄陂路街景"
+    }
+  },
+  {
+    "id": "hubu",
+    "name": "户部巷",
+    "category": "美食",
+    "area": "武昌古城",
+    "highlights": "糊汤粉 · 热干面",
+    "description": "在武昌老街选一两样小吃，适合把过早和黄鹤楼排在同一段行程。",
+    "source": "https://shuming-official-file.markyin.com/static/file/SAIGS01CompetitionMaterials.zip",
+    "source_label": "赛事武汉手册 · 第164页",
+    "photo": {
+      "artist": "Howchou",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Hubu_Xiang_Entrance.jpg",
+      "caption": "户部巷街景"
+    }
+  },
+  {
+    "id": "noodles",
+    "name": "山海关路",
+    "category": "美食",
+    "area": "汉口江岸",
+    "highlights": "热干面 · 鸡冠饺",
+    "description": "想体验武汉人说的“过早”，可以到这条街找本地早餐。具体供餐时间以店家为准。",
+    "source": "https://shuming-official-file.markyin.com/static/file/SAIGS01CompetitionMaterials.zip",
+    "source_label": "赛事武汉手册 · 第167页",
+    "photo": {
+      "artist": "ZhengZhou",
+      "license": "CC BY-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Hot_Dry_Noodles.jpg",
+      "caption": "武汉热干面（菜品示意）"
+    }
+  },
+  {
+    "id": "doupi",
+    "name": "吉庆街",
+    "category": "美食",
+    "area": "汉口老城",
+    "highlights": "豆皮 · 汤包",
+    "description": "适合在汉口老城边走边吃，选一些本地小吃和同行的人分着尝。",
+    "source": "https://shuming-official-file.markyin.com/static/file/SAIGS01CompetitionMaterials.zip",
+    "source_label": "赛事武汉手册 · 第165页",
+    "photo": {
+      "artist": "ZhengZhou",
+      "license": "CC BY-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Doupi.jpg",
+      "caption": "武汉豆皮（菜品示意）"
+    }
+  }
+]
