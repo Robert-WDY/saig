@@ -104,11 +104,16 @@ function renderPins() {
       L.polyline([pos, pinPos], { weight: 1.5, opacity: 0.8, color: "#4b5675", interactive: false }).addTo(pins);
       L.circleMarker(pos, { radius: 2.5, color: "#12399d", interactive: false }).addTo(pins);
     }
-    const picture = row.photo ? node("img") : node("span", { "公园山水": "山", "展馆文博": "馆", "亲子游乐": "游", "地方美食": "食" }[row.topic] || "景", "pin-symbol");
+    const picture = row.photo ? node("span", "", "pin-photo") : node("span", "", "pin-symbol");
     if (row.photo) {
-      picture.src = "/web/atlas/" + row.id + "-pin.webp";
-      picture.alt = "";
-    }
+      const img = node("img");
+      img.src = "/web/atlas/" + row.id + "-pin.webp";
+      img.alt = "";
+      picture.append(img);
+      const badge = node("i", "", "pin-badge");
+      badge.innerHTML = MapIcons.for(row, 13);
+      picture.append(badge);
+    } else picture.innerHTML = MapIcons.for(row, 21);
     const box = node("div");
     box.append(picture, node("b", row.name));
     const icon = L.divIcon({ className: "atlas-pin " + kinds[row.category] + (selected === row ? " selected" : "") + (choices.has(row.name) ? " chosen" : ""), html: box.innerHTML, iconSize: [78, 56], iconAnchor: [39, 27] });
@@ -143,7 +148,13 @@ function select(row) {
   const toggle = node("button");
   toggle.id = "toggle-pick";
   toggle.onclick = () => toggleChoice(row.name);
-  copy.append(node("small", row.category + " / " + row.district + (row.grade ? " · " + row.grade : "")), node("h2", row.name), node("p", row.highlights + "　·　建议 " + row.minutes + " 分钟", "tags"), node("p", row.description));
+  copy.append(node("small", row.category + " / " + row.district + (row.grade ? " · " + row.grade : "")), (() => {
+    const h = node("h2");
+    const mark = node("span", "", "detail-icon");
+    mark.innerHTML = MapIcons.for(row, 26);
+    h.append(mark, document.createTextNode(row.name));
+    return h;
+  })(), node("p", row.highlights + "　·　建议 " + row.minutes + " 分钟", "tags"), node("p", row.description));
   if (row.category === "大学") copy.append(node("small", "校园访客预约与开放安排请查学校当期公告。"));
   if (row.notice) copy.append(node("p", row.notice, "poi-notice"));
   copy.append(credits, toggle);
@@ -383,3 +394,7 @@ Promise.all([WuhanMap.readJSON("/city-places"), WuhanMap.readJSON("/route-points
 }).catch(() => {
   el("feedback").textContent = "地点资料暂未加载，请刷新页面。";
 });
+for (const b of document.querySelectorAll("#filters button")) {
+  const kind = { "景点": "pagoda", "大学": "campus", "美食": "noodles" }[b.textContent.trim()];
+  if (kind) b.insertAdjacentHTML("afterbegin", MapIcons.svg(kind, 17));
+}

@@ -72,3 +72,14 @@
 .itinerary-focus .atlas-pin:not(.selected),.itinerary-focus .poi-cluster{opacity:.55}
 
 .poi-cluster.district-count{border-radius:16px;font-size:12px}
+
+/* Illustrated pin icons */
+.leaflet-marker-pane .atlas-pin .pin-symbol {width:34px;height:34px;background:#fffaf0;border:2px solid #12399d;box-shadow:0 0 0 2px #fffaf0,0 2px 6px #0b2a7a50}
+.atlas-pin.food .pin-symbol {border-color:#c2461f}
+.atlas-pin.university .pin-symbol {border-color:#1f6f8b}
+.pin-photo {position:relative;display:block}
+.pin-badge {position:absolute;right:-6px;bottom:-3px;display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:#fffaf0;border:1.5px solid #12399d;font-style:normal}
+.atlas-pin.selected .pin-symbol {box-shadow:0 0 0 3px #e8562d,0 0 0 9px #1b46b930}
+.detail-icon {display:inline-grid;place-items:center;width:34px;height:34px;margin-right:8px;vertical-align:-6px;border-radius:50%;background:#fffaf0;border:2px solid #12399d}
+#filters button {display:inline-flex;align-items:center;gap:5px}
+#filters [aria-pressed=true] svg {filter:brightness(0) invert(1)}

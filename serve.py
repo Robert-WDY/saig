@@ -56,6 +56,12 @@ WEB_ASSETS.update({
     "/web/city.js": ("dist/city.js", "text/javascript; charset=utf-8"),
     "/web/city.css": ("city.css", "text/css; charset=utf-8"),
 })
+# Every image in web/ and every built script is served, so a new asset never 404s behind a stale whitelist.
+for asset in WEB_DIR.glob("*"):
+    media={".webp":"image/webp",".png":"image/png",".svg":"image/svg+xml"}.get(asset.suffix)
+    if media:WEB_ASSETS.setdefault("/web/"+asset.name,(asset.name,media))
+for script in (WEB_DIR / "dist").glob("*.js"):
+    WEB_ASSETS.setdefault("/web/"+script.name,("dist/"+script.name,"text/javascript; charset=utf-8"))
 for photo in (WEB_DIR / "atlas").glob("*.webp"):
     WEB_ASSETS["/web/atlas/"+photo.name] = ("atlas/"+photo.name, "image/webp")
 

@@ -184,7 +184,12 @@ function spokenReply(result) {
   if (days.length) return "好的，行程排好啦。" + days.join("。") + "。每一站的时间和交通都在行程板上。";
   return (result.answer || "").split("\n").slice(0, 3).join("");
 }
-let showcase = null;
+let showcase = null, placeIndex = {};
+fetch("/city-places").then((r) => r.ok ? r.json() : []).then((rows) => {
+  for (const row of rows) placeIndex[row.name] = row;
+  if (rows.length) renderBoard();
+}).catch(() => {
+});
 fetch("/showcase").then((r) => r.ok ? r.json() : null).then((data) => {
   showcase = data;
   if (data) renderMessages();
@@ -384,6 +389,12 @@ function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
     clock.prepend(was);
   }
   const label = node("span", "", name);
+  if (typeof MapIcons !== "undefined" && !arrival) {
+    const icon = node("i", "stop-icon");
+    const place = name.replace(/出发$/, "");
+    icon.innerHTML = MapIcons.for(placeIndex[place] || { name: place }, 16);
+    label.prepend(icon);
+  }
   if ((change == null ? void 0 : change.kind) === "added") label.append(node("em", "change-tag", "新增"));
   if ((change == null ? void 0 : change.kind) === "moved") label.append(node("em", "change-tag", change.delta));
   row.append(clock, label);

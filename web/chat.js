@@ -188,7 +188,12 @@ function spokenReply(result) {
   return (result.answer || "").split("\n").slice(0, 3).join("");
 }
 
-let showcase = null;
+let showcase = null, placeIndex = {};
+// Category and topic per place so trip-board icons match the city map.
+fetch("/city-places").then(r => r.ok ? r.json() : []).then(rows => {
+  for (const row of rows) placeIndex[row.name] = row;
+  if (rows.length) renderBoard();
+}).catch(() => {});
 fetch("/showcase").then(r => r.ok ? r.json() : null).then(data => { showcase = data; if (data) renderMessages(); }).catch(() => {});
 function appendInfoCards(bubble, result) {
   if (!showcase) return;
@@ -379,6 +384,12 @@ function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
     clock.prepend(was);
   }
   const label = node("span", "", name);
+  if (typeof MapIcons !== "undefined" && !arrival) {
+    const icon = node("i", "stop-icon");
+    const place = name.replace(/出发$/, "");
+    icon.innerHTML = MapIcons.for(placeIndex[place] || {name: place}, 16);
+    label.prepend(icon);
+  }
   if (change?.kind === "added") label.append(node("em", "change-tag", "新增"));
   if (change?.kind === "moved") label.append(node("em", "change-tag", change.delta));
   row.append(clock, label);
