@@ -6,7 +6,9 @@
   <meta name="theme-color" content="#12399d">
   <title>武汉接线台 · 数命 SPU 城市 AI 接待员</title>
   <link rel="icon" type="image/png" href="/web/icon.png">
+  <link rel="preload" as="image" href="/web/porpoise.webp">
   <link rel="stylesheet" href="/web/style.css">
+  <script src="/web/avatar.js" defer></script>
   <script src="/web/poster.js" defer></script>
   <script src="/web/compat.js" defer></script>
   <script src="/web/route-time.js" defer></script>
@@ -17,41 +19,55 @@
   <!-- shared-header -->
 
   <main class="frame">
-    <section class="hero" aria-labelledby="welcome-title">
-      <img srcset="/web/hero-small.webp 600w, /web/wuhan-switchboard.webp 1200w" sizes="(max-width: 640px) 100vw, 75vw" src="/web/hero-small.webp" alt="丝网印风格的武汉城市插画，暖橙色黄鹤楼立在蓝色江岸，长江大桥斜跨江面" width="1440" height="960" fetchpriority="high">
-      <div class="hero-body">
-        <h1 id="welcome-title">喂，武汉怎么走？</h1>
-        <p>一天还是两天？先排两条线，临时改口也能接得上。</p>
-        <button class="hero-action" type="button" id="start">开始对话 <span aria-hidden="true">↓</span></button>
+    <section class="stage" aria-labelledby="welcome-title">
+      <div class="stage-art" aria-hidden="true"><img srcset="/web/hero-small.webp 600w, /web/wuhan-switchboard.webp 1200w" sizes="(max-width: 760px) 100vw, 60vw" src="/web/hero-small.webp" alt="" width="1440" height="960" fetchpriority="high"></div>
+      <div class="stage-host">
+        <div class="stage-avatar" data-porpoise data-state="idle"></div>
+        <p class="stage-bubble"><b>江豚接待员</b><span data-porpoise-status>在线 · 武汉、社区、行程、SAIG 都能问</span></p>
       </div>
-      <span class="illustration-credit">武汉城市插画 · AI 绘制</span>
+      <div class="stage-copy">
+        <p class="eyebrow">武汉数命 SPU 城市 AI 接待员</p>
+        <h1 id="welcome-title">喂，武汉怎么走？</h1>
+        <p class="stage-lede">讲江城、带你认识数命 SPU 社区、排几天行程、说清 SAIG 怎么参加。每句回答都附官方资料出处。</p>
+        <div class="skills" role="list">
+          <button type="button" role="listitem" class="starter skill" data-prompt="第一次来武汉，有什么值得了解的？">
+            <span class="skill-no">01</span><strong>介绍武汉</strong><small>三镇、历史、过早</small>
+          </button>
+          <button type="button" role="listitem" class="starter skill" data-prompt="数命 SPU 社区是做什么的？在武汉哪里？没有项目经验的人去了能学什么？">
+            <span class="skill-no">02</span><strong>数命 SPU 社区</strong><small>智民里与真实订单</small>
+          </button>
+          <button type="button" role="listitem" class="starter skill" data-prompt="第一次来武汉，帮我规划两日行程，住在江汉路附近。">
+            <span class="skill-no">03</span><strong>武汉旅游规划</strong><small>两日游 · 可随时改</small>
+          </button>
+          <button type="button" role="listitem" class="starter skill" data-prompt="数命 SPU 是什么意思？SAIG 比赛怎么参加，需要提交什么？">
+            <span class="skill-no">04</span><strong>数命 SPU 与 SAIG</strong><small>概念、赛程、报名</small>
+          </button>
+        </div>
+      </div>
+      <span class="illustration-credit">武汉城市插画 · AI 绘制 ｜ 江豚形象 · SAIG 官方素材</span>
     </section>
 
     <div class="workbench">
       <section class="panel chat-panel" id="assistant" aria-labelledby="assistant-title">
         <header class="panel-head">
           <div class="head-title">
-            <span class="mark small" aria-hidden="true">接</span>
-            <div><h2 id="assistant-title">接待台</h2><p>聊武汉、排路线、问社区和比赛</p></div>
+            <span class="mini-avatar" data-porpoise data-state="idle"></span>
+            <div><h2 id="assistant-title">接待台</h2><p data-porpoise-status>在线 · 武汉、社区、行程、SAIG 都能问</p></div>
           </div>
-          <button id="reset" class="text-button" type="button"><span aria-hidden="true">＋</span> 新对话</button>
+          <div class="head-actions">
+            <button class="text-button voice-toggle" type="button" data-voice-toggle aria-pressed="true" hidden>语音播报</button>
+            <button id="reset" class="text-button" type="button"><span aria-hidden="true">＋</span> 新对话</button>
+          </div>
         </header>
         <div class="chat-window" id="chat-window" tabindex="0" aria-label="对话记录">
           <div class="welcome" id="welcome">
-            <p class="greeting"><span class="receptionist-face" role="img" aria-label="赛事官方蓝色江豚接待员"></span>接通了，想去哪儿？</p>
+            <p class="greeting">接通了，想去哪儿？</p>
+            <p class="welcome-copy">点上方四张卡片之一，或者直接打字。也可以试试：</p>
             <div class="starter-grid">
-              <button type="button" class="starter" data-prompt="第一次来武汉，常听人说「武汉三镇」，到底是哪三镇？早上在汉口可以吃些什么？">
-                <span class="starter-icon rust" aria-hidden="true">城</span><span><strong>认识武汉</strong><small>三镇与过早</small></span><span class="arrow" aria-hidden="true">↗</span>
-              </button>
-              <button type="button" class="starter" data-prompt="给我一份武汉一日游和一份两日游，比较一下怎么玩。">
-                <span class="starter-icon green" aria-hidden="true">游</span><span><strong>规划行程</strong><small>对比一日游和两日游</small></span><span class="arrow" aria-hidden="true">↗</span>
-              </button>
-              <button type="button" class="starter" data-prompt="我想去江岸的数命 SPU 社区看看。它在哪个街区？没有项目经验的人去了能学什么？">
-                <span class="starter-icon blue" aria-hidden="true">聚</span><span><strong>探访社区</strong><small>智民里与真实订单带教</small></span><span class="arrow" aria-hidden="true">↗</span>
-              </button>
-              <button type="button" class="starter" data-prompt="数命 SPU 是什么意思？我想以个人身份参加 SAIG 线上赛，需要提交什么？">
-                <span class="starter-icon gold" aria-hidden="true">赛</span><span><strong>了解 SAIG</strong><small>SPU 概念与参赛材料</small></span><span class="arrow" aria-hidden="true">↗</span>
-              </button>
+              <button type="button" class="starter chip" data-prompt="给我一份武汉一日游和一份两日游，比较一下怎么玩。">一日游和两日游怎么选？</button>
+              <button type="button" class="starter chip" data-prompt="早上在汉口过早，有哪些武汉特色早点？">汉口过早吃什么</button>
+              <button type="button" class="starter chip" data-prompt="数命 SPU 社区在武汉的会场在哪里？坐地铁怎么去？">社区会场怎么去</button>
+              <button type="button" class="starter chip" data-prompt="SAIG 的人气榜怎么统计？点赞什么时候截止？">人气榜怎么算</button>
             </div>
           </div>
           <div id="messages" role="log" aria-label="游客与接待员的消息" aria-live="polite"></div>

@@ -128,6 +128,29 @@ function appendSources(parent, citations = []) {
   parent.append(details);
 }
 
+const topicLabels = {wuhan: "介绍武汉", attraction: "武汉景点", food: "武汉美食", community: "数命 SPU 社区",
+  spu: "数命 SPU", saig: "SAIG 大赛", guide: "旅游规划", location: "位置"};
+function replyTopics(result) {
+  const found = [];
+  if (Object.keys(result.days || {}).length || (result.deliverables || []).some(d => d.cards)) found.push("旅游规划");
+  for (const step of result.trace || []) {
+    const name = step.tool_name || (step.query !== undefined ? step.tool : "");
+    if (step.step === "answered_question" && !step.supported) continue;
+    const label = topicLabels[name];
+    if (label && !found.includes(label)) found.push(label);
+  }
+  return found.slice(0, 3);
+}
+function planSummary(answer = "") {
+  return answer.split("\n").filter(line => /^第\d+天[：:]/.test(line))
+    .map(line => line.replace(/\s*参考《[^》]*》.*$/, "").replace(/\d{1,2}:\d{2}–\d{1,2}:\d{2}\s*/g, ""));
+}
+function spokenReply(result) {
+  const days = planSummary(result.answer);
+  if (days.length) return "好的，行程排好啦。" + days.join("。") + "。每一站的时间和交通都在行程板上。";
+  return (result.answer || "").split("\n").slice(0, 3).join("");
+}
+
 function renderReply(bubble, result) {
   const deliveries = result.deliverables || [];
   const visibleCards = deliveries.filter(d => d.status === "passed" && (d.cards || d.kind === "compare"));
@@ -149,6 +172,21 @@ function renderReply(bubble, result) {
     const details = node("details", "answer-detail");
     details.append(node("summary", "", "展开完整回答"), body);
     bubble.append(details);
+  } else if (planSummary(result.answer).length) {
+    const summary = node("div", "plan-summary");
+    for (const line of planSummary(result.answer)) {
+      const [day, stops = ""] = line.split(/[：:](.*)/s);
+      const row = node("p", "summary-day");
+      row.append(node("b", "", day), node("span", "", stops.trim()));
+      summary.append(row);
+    }
+    summary.append(button("delivery", "在行程板查看每站时间与交通 →", () => {
+      get("workspace").scrollIntoView({behavior: "smooth", block: "start"});
+    }));
+    bubble.append(summary);
+    const details = node("details", "answer-detail");
+    details.append(node("summary", "", "展开完整安排与转场"), body);
+    bubble.append(details);
   } else {
     bubble.append(body);
   }
@@ -169,6 +207,11 @@ function renderMessages() {
       mark.setAttribute("aria-hidden", "true");
       entry.append(mark);
       bubble.setAttribute("aria-label", "接待员的回答");
+      if (message.result.topics?.length) {
+        const tags = node("div", "topic-tags");
+        for (const topic of message.result.topics) tags.append(node("span", "", topic));
+        bubble.append(tags);
+      }
       renderReply(bubble, message.result);
     }
     entry.append(bubble);
@@ -177,7 +220,12 @@ function renderMessages() {
   if (state.pending) {
     const entry = node("div", busy ? "message" : "message error");
     const bubble = node("div", "bubble");
-    if (busy) bubble.append(node("p", "working", "接待员正在整理答复…"));
+    if (busy) {
+      const mark = node("span", "receptionist-face");
+      mark.setAttribute("aria-hidden", "true");
+      entry.prepend(mark);
+      bubble.append(node("p", "working", "江豚接待员正在查资料…"));
+    }
     else {
       bubble.append(node("p", "", state.pending.error || "这条消息还在等答复。"));
       bubble.append(button("chip", "重试发送", () => sendPending()));
@@ -450,6 +498,7 @@ async function sendPending() {
   render();
   const start = performance.now();
   const progress = get("progress");
+  if (typeof Receptionist !== "undefined") { Receptionist.stop(); Receptionist.set("thinking"); }
   progress.textContent = "正在整理答复…";
   const timer = setInterval(() => {
     progress.textContent = "正在整理答复… " + Math.floor((performance.now() - start) / 1000) + " 秒";
@@ -463,8 +512,9 @@ async function sendPending() {
     if (!response.ok) throw new Error(result.error || "暂时无法完成这次问答");
     state.session = result.session;
     state.messages.push({role: "assistant", result: {
-      answer: result.answer, citations: result.citations, deliverables: result.deliverables
+      answer: result.answer, citations: result.citations, deliverables: result.deliverables, topics: replyTopics(result)
     }});
+    if (typeof Receptionist !== "undefined") Receptionist.say(spokenReply(result));
     updateBoard(result);
     animateReply = true;
     state.pending = null;
@@ -473,6 +523,7 @@ async function sendPending() {
   } catch (error) {
     state.pending.error = error instanceof TypeError ? "连接中断，点击重试继续这条消息。" : error.message;
     progress.textContent = "等待重试";
+    if (typeof Receptionist !== "undefined") Receptionist.set("error");
     checkConnection();
   } finally {
     clearInterval(timer);
@@ -495,12 +546,11 @@ question.addEventListener("keydown", event => {
   }
 });
 for (const starter of document.querySelectorAll(".starter")) {
-  starter.addEventListener("click", () => sendText(starter.dataset.prompt));
+  starter.addEventListener("click", () => {
+    if (starter.classList.contains("skill")) get("assistant").scrollIntoView({behavior: "smooth", block: "start"});
+    sendText(starter.dataset.prompt);
+  });
 }
-get("start").addEventListener("click", () => {
-  question.focus({preventScroll: true});
-  question.scrollIntoView({block: "center"});
-});
 const exportButton = get("save-comparison");
 exportButton.addEventListener("click", async () => {
   const result = currentComparison();
