@@ -3,7 +3,7 @@
 const get = id => document.getElementById(id);
 const base = [30.573, 114.298];
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
-const map = L.map("route-map", {preferCanvas: true, scrollWheelZoom: false, minZoom: 7, maxZoom: 18}).setView(base, 12);
+const map = L.map("route-map", {preferCanvas: true, scrollWheelZoom: true, minZoom: 7, maxZoom: 18}).setView(base, 12);
 map.attributionControl.setPrefix(false);
 const localMap = L.imageOverlay("/web/wuhan-schematic.png", [[30.39,114.13],[30.72,114.55]],
   {attribution:"武汉本地路线示意 · 河流 Natural Earth", interactive:false}).addTo(map);
@@ -36,6 +36,174 @@ let points = {};
 let day = "";
 let rows = [];
 let timer = null;
+
+let catalog = [];
+const added = new Set();
+const removed = new Set();
+let requestId = null;
+let saving = false;
+
+const nearbyLayer = L.layerGroup().addTo(map);
+
+function stageAddition(name) {
+  if (saving || !selected() || added.has(name)) return;
+  added.add(name);
+  requestId = null;
+  get("edit-feedback").textContent = "";
+  if (expanded()) toggleExpanded();
+  map.closePopup();
+  renderEditor(selected());
+}
+
+function drawLocalPlaces() {
+  nearbyLayer.clearLayers();
+  if (!map.hasLayer(localMap)) return;
+  const occupied = [];
+  const zoom = map.getZoom();
+  const bounds = map.getBounds();
+  const plan = selected();
+  const card = plan?.cards[day];
+  const activeNames = new Set(rows.map(row => row.name));
+  const localNames = Object.entries(points).filter(([name,p]) => !activeNames.has(name) && Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  const labels = [
+    ...rows.filter(row => row.coords).map(row => [row.name, row.coords, "visit"]),
+    ...[["汉口",[30.61,114.25]],["汉阳",[30.535,114.22]],["武昌",[30.535,114.345]]].map(([name,pos])=>[name,pos,"district"]),
+    ...(zoom >= 11 ? localNames.map(([name,p])=>[name,[p.lat,p.lon],"place"]) : [])
+  ];
+  for (const [name,coords,kind] of labels) {
+    if (!bounds.contains(coords)) continue;
+    const pt = map.latLngToContainerPoint(coords);
+    const width = name.length * (kind === "district" ? 19 : 13) + 12;
+    const gap = kind === "visit" ? 16 : 2;
+    const offset = pt.x + gap + width > map.getSize().x ? -width-gap : gap;
+    const x = pt.x + offset;
+    if (occupied.some(r => x < r.right+4 && x+width > r.left-4 && Math.abs(pt.y-r.y)<20)) continue;
+    occupied.push({left:x,right:x+width,y:pt.y});
+    const label = elem("span", name, "geo-name "+kind);
+    const marker=L.marker(coords,{icon:L.divIcon({className:"geo-label",html:label,iconSize:[width,24],
+      iconAnchor:[-offset,12]}),interactive:kind==="place",keyboard:kind==="place",
+      title:name,zIndexOffset:-500}).addTo(nearbyLayer);
+    if (kind==="place") marker.bindPopup(() => {
+      const popup=elem("div");
+      popup.append(elem("strong",name));
+      if (card && catalog.includes(name) && !card.contract.exclude.includes(name)) {
+        const add=elem("button","添加到第 "+day+" 天","text-button");
+        add.type="button"; add.disabled=saving || added.has(name);
+        add.addEventListener("click",()=>stageAddition(name)); popup.append(add);
+      } else popup.append(external("查看地点",mapSearch(name)));
+      return popup;
+    });
+  }
+}
+map.on("moveend zoomend baselayerchange", drawLocalPlaces);
+map.on("resize", event => {
+  if (event.oldSize.x !== event.newSize.x && rows.length) fitRoute();
+});
+
+function expanded() {
+  return document.body.classList.contains("map-expanded");
+}
+function toggleExpanded() {
+  const on = !expanded();
+  document.body.classList.toggle("map-expanded", on);
+  const btn = get("expand-map");
+  btn.textContent = on ? "收起大图" : "展开大图";
+  btn.setAttribute("aria-pressed", String(on));
+  requestAnimationFrame(() => {
+    map.invalidateSize();
+    if (rows.length) fitRoute();
+    btn.focus();
+  });
+}
+
+get("expand-map").addEventListener("click", toggleExpanded);
+document.addEventListener("keydown", e => { if (expanded() && e.key === "Escape") toggleExpanded(); });
+get("city-view").addEventListener("click", () => {
+  stopPlayback();
+  map.fitBounds(localMap.getBounds(), {padding:[12,12],animate:false});
+});
+
+function renderEditor(plan) {
+  get("route-editor").hidden = false;
+  const card = plan.cards[day];
+  const dirty = added.size + removed.size > 0;
+  selector.disabled = saving || dirty;
+  for (const btn of get("route-days").children) btn.disabled = saving || dirty;
+  const picker = get("place-picker");
+  const previous = picker.value;
+  const choices = catalog.filter(n => !card.order.includes(n) && !added.has(n) &&
+    !card.contract.exclude.includes(n) && ![card.contract.origin,card.contract.destination].includes(n));
+  picker.replaceChildren(new Option("选择景点、街区或美食地点", ""), ...choices.map(n => new Option(n,n)));
+  if (choices.includes(previous)) picker.value = previous;
+  picker.disabled = saving || !choices.length;
+  get("add-stop").disabled = saving || !picker.value;
+  const summary = [];
+  if (added.size) summary.push("将添加：" + Array.from(added).join("、"));
+  if (removed.size) summary.push("将移除：" + Array.from(removed).join("、"));
+  get("draft-stops").textContent = summary.join("；");
+  get("edit-actions").hidden = !dirty;
+  get("discard-stops").disabled = saving;
+  get("apply-stops").disabled = saving;
+  get("apply-stops").textContent = saving ? "正在重排…" : "应用并重排行程";
+}
+
+function selected() { return plans.find(p => p.id === selector.value); }
+
+get("place-picker").addEventListener("change", () => { get("add-stop").disabled = saving || !get("place-picker").value; });
+get("add-stop").addEventListener("click", () => {
+  if (saving || !get("place-picker").value) return;
+  stageAddition(get("place-picker").value);
+});
+get("discard-stops").addEventListener("click", () => {
+  if (saving) return;
+  added.clear(); removed.clear(); requestId = null;
+  get("edit-feedback").textContent = "";
+  renderRoute(selected(), false);
+});
+
+get("apply-stops").addEventListener("click", async () => {
+  if (saving || !(added.size || removed.size)) return;
+  const plan = selected();
+  const card = plan.cards[day];
+  const dayKey = day;
+  saving = true;
+  requestId = requestId || newId();
+  renderRoute(plan, false);
+  try {
+    const key = "saig-visitor-workspace-v1";
+    const workspace = JSON.parse(sessionStorage.getItem(key));
+    if (!workspace?.session) throw new Error("本页会话已关闭，请回接待台重新打开。");
+    const response = await fetch("/route-edit", {method:"POST", headers:apiHeaders(),
+      body:JSON.stringify({session:workspace.session,request_id:requestId,change:{
+        plan:plan.id,day:dayKey,basis:{order:card.order,contract:card.contract},
+        add:Array.from(added),remove:Array.from(removed)
+      }})});
+    const updated = await response.json();
+    if (!response.ok) throw new Error(updated.error || "重排未完成，原行程已保留。");
+    const replacement = {...plan,cards:updated.cards,version:updated.version,replannedDays:[Number(dayKey)],
+      beforeCounts:{[dayKey]:card.order.length}};
+    workspace.plans = workspace.plans.map(p => p.id === plan.id ? replacement : p)
+      .filter(p => plan.id !== "current" || p.id !== "preview");
+    if (workspace.comparison?.versions?.some(v => v.option_id === plan.id)) workspace.comparison = {...workspace.comparison, outdated:true};
+    workspace.mapSelection = {plan:plan.id,day:dayKey};
+    workspace.messages.push({role:"user",text:updated.action},{role:"assistant",result:{answer:updated.answer}});
+    sessionStorage.setItem(key,JSON.stringify(workspace));
+    Object.assign(plan,replacement);
+    if (plan.id === "current") {
+      const stale = plans.findIndex(p => p.id === "preview");
+      if (stale >= 0) { plans.splice(stale,1); selector.querySelector('option[value="preview"]')?.remove(); }
+    }
+    added.clear(); removed.clear(); requestId = null;
+    get("edit-feedback").textContent = "第 " + dayKey + " 天已重排，行程板已更新。";
+  } catch (error) {
+    get("edit-feedback").textContent = error.message || "未收到服务器确认，可点击重试。";
+  } finally {
+    saving = false;
+    renderRoute(plan);
+  }
+});
+
+window.addEventListener("pageshow", e => { if (e.persisted) location.reload(); });
 
 function readPlans() {
   try {
@@ -173,7 +341,7 @@ function playRoute() {
   step();
 }
 
-function renderRoute(plan) {
+function renderRoute(plan, refit = true) {
   stopPlayback();
   map.closePopup();
   routeLayer.clearLayers();
@@ -201,6 +369,27 @@ function renderRoute(plan) {
     if (row.leg) actions.append(elem("span", [modeNames[row.leg.mode], routeTime.duration(row.leg.minutes)].filter(Boolean).join(" · ")));
     if (!row.coords) actions.append(elem("span", "坐标待核"));
     else if (points[row.name].usage) actions.append(elem("span", points[row.name].usage));
+    const anchored = row.name === card.contract.origin || row.name === card.contract.destination;
+    const editable = card.order.includes(row.name) && !anchored;
+    function removeButton() {
+      const control = elem("button", removed.has(row.name) ? "保留此站" : "移除" + (card.contract.must.includes(row.name) ? "必去站" : "此站"), "stop-edit");
+      control.type = "button";
+      control.setAttribute("aria-label", control.textContent + " · " + row.name);
+      control.disabled = saving;
+      control.addEventListener("click", () => {
+        if (saving) return;
+        removed.has(row.name) ? removed.delete(row.name) : removed.add(row.name);
+        if (expanded()) toggleExpanded();
+        requestId = null;
+        get("edit-feedback").textContent = "";
+        renderRoute(plan, false);
+        get("apply-stops").focus();
+      });
+      return control;
+    }
+    if (editable) actions.append(removeButton());
+    else if (anchored) actions.append(elem("span","行程锚点"));
+    row.item.classList.toggle("staged", removed.has(row.name));
     const link = legNavigation(row.leg, rows[index - 1]?.coords, row.coords);
     if (link) actions.append(external("本段导航", link));
     actions.append(external("在地图中搜索", mapSearch(row.name)));
@@ -213,6 +402,7 @@ function renderRoute(plan) {
     }).addTo(routeLayer);
     const popup = elem("div");
     popup.append(elem("strong", points[row.name].label || row.name), elem("p", row.time), external("查看地点", mapSearch(row.name)));
+    if (editable) popup.append(removeButton());
     marker.bindPopup(popup).on("click", () => { stopPlayback(); active(index); });
     row.marker = marker;
     button.addEventListener("click", () => { stopPlayback(); active(index, true); });
@@ -222,7 +412,20 @@ function renderRoute(plan) {
   play.disabled = count < 2;
   fit.disabled = !count;
   progress.textContent = count ? "" : "本日地点坐标待核实";
-  fitRoute();
+  const url="/routes?" + new URLSearchParams({plan:plan.id,day});
+  if (location.pathname+location.search !== url) history.replaceState(null,"",url);
+  document.querySelector(".nav-map").href=url;
+  try {
+    const key="saig-visitor-workspace-v1";
+    const workspace=JSON.parse(sessionStorage.getItem(key));
+    if (workspace && (workspace.mapSelection?.plan !== plan.id || workspace.mapSelection?.day !== day)) {
+      workspace.mapSelection={plan:plan.id,day};
+      sessionStorage.setItem(key,JSON.stringify(workspace));
+    }
+  } catch { /* Selection is still available in the page URL. */ }
+  renderEditor(plan);
+  if (refit) fitRoute();
+  drawLocalPlaces();
 }
 
 function selectPlan(preferredDay) {
@@ -232,6 +435,14 @@ function selectPlan(preferredDay) {
 }
 
 async function start() {
+  try {
+    const response = await fetch("/route-points");
+    if (!response.ok) throw new Error("coordinate load failed");
+    points = await response.json();
+  } catch {
+    get("map-source-note").textContent = "暂时无法读取坐标，可以继续看站点和搜索地点。";
+  }
+  drawLocalPlaces();
   if (!plans.length) {
     get("route-stops-header")?.setAttribute("hidden", "");
     return;
@@ -244,12 +455,10 @@ async function start() {
   }
   if (plans.some(plan => plan.id === params.get("plan"))) selector.value = params.get("plan");
   try {
-    const response = await fetch("/route-points");
-    if (!response.ok) throw new Error("coordinate load failed");
-    points = await response.json();
-  } catch {
-    get("map-source-note").textContent = "暂时无法读取坐标，可以继续看站点和搜索地点。";
-  }
+    const response = await fetch("/route-places");
+    if (!response.ok) throw new Error();
+    catalog = await response.json();
+  } catch { get("edit-feedback").textContent = "地点目录暂未加载，可先移除站点，刷新后再添加。"; }
   selector.disabled = false;
   selector.addEventListener("change", () => selectPlan(""));
   selectPlan(params.get("day") || "");

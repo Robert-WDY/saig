@@ -1,0 +1,65 @@
+import tempfile
+import unittest
+from copy import deepcopy
+from pathlib import Path
+
+from planning import Invalid, evaluate, new_contract
+from route_edits import edit_route
+from storage import Conflict, Sessions
+
+
+def card(names, **kwargs):
+    c = {**new_contract(), **kwargs}
+    return {"order":names,"contract":c,"audit":evaluate(c,names)}
+
+
+class RouteEditTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.store = Sessions(str(Path(folder.name)/"test.db"))
+        self.first = card(["黄鹤楼"])
+        self.second = card(["江汉路","黎黄陂路"],destination="汉口站",end=960,must=["江汉路"])
+        self.days = {"1":self.first,"2":self.second}
+        self.state = {"days":{"1":self.first},"pending_days":{"1":self.second},"facts":[],"turns":[],
+                      "options":{"two":{"days":self.days,"title":"两日游","version":1}}}
+        self.store.save("s","seed","seed",0,self.state,{})
+        self.change = {"plan":"two","day":"2","remove":["江汉路"],"add":["吉庆街"],
+                       "basis":{k:self.second[k] for k in ("order","contract")}}
+
+    def test_scoped_batch_replan_and_retry(self):
+        result = edit_route(self.store,"s","r",self.change)
+        second = result["cards"]["2"]
+        self.assertEqual(set(second["order"]),{"黎黄陂路","吉庆街"})
+        self.assertEqual(second["contract"]["must"],["吉庆街"])
+        self.assertLessEqual(second["audit"]["arrival"],960)
+        self.assertEqual(second["audit"],evaluate(second["contract"],second["order"]))
+        self.assertEqual(result["cards"]["1"],self.first)
+        self.assertEqual(result,edit_route(self.store,"s","r",self.change))
+        with self.assertRaises(Conflict):
+            edit_route(self.store,"s","stale",self.change)
+        rev,state,_ = self.store.read("s","read","")
+        self.assertEqual(rev,2)
+        self.assertEqual(state["days"],self.state["days"])
+        self.assertEqual(state["pending_days"],self.state["pending_days"])
+        self.assertEqual(state["options"]["two"]["version"],2)
+
+    def test_infeasible_edit_rolls_back(self):
+        tight = card(["江汉路"],start=900,end=950)
+        state = deepcopy(self.state)
+        state["days"]={"1":tight}
+        self.store.save("tight","seed","seed",0,state,{})
+        change={"plan":"current","day":"1","basis":{k:tight[k] for k in ("order","contract")},"add":["黄鹤楼"],"remove":[]}
+        with self.assertRaises(Invalid):
+            edit_route(self.store,"tight","r",change)
+        self.assertEqual(self.store.read("tight","read","")[:2],(1,state))
+
+    def test_preview_isolated_and_empty_day_rejected(self):
+        change={**self.change,"plan":"preview","day":"1","add":[],"remove":["江汉路","黎黄陂路"]}
+        with self.assertRaises(Invalid): edit_route(self.store,"s","r",change)
+        change["remove"]=["黎黄陂路"]
+        result=edit_route(self.store,"s","r",change)
+        self.assertEqual(result["cards"]["1"]["order"],["江汉路"])
+        state=self.store.read("s","read","")[1]
+        self.assertEqual(state["days"],self.state["days"])
+        self.assertEqual(state["options"],self.state["options"])

@@ -1,5 +1,5 @@
 "use strict";
-var _a;
+var _a, _b, _c;
 const get = (id) => document.getElementById(id);
 const question = get("question");
 const chatWindow = get("chat-window");
@@ -11,8 +11,8 @@ const defaultState = () => ({ session: newId(), messages: [], plans: [], compari
 let state = restore();
 let busy = false;
 let activeTab = "plans";
-let selectedPlan = ((_a = state.plans[0]) == null ? void 0 : _a.id) || "";
-let openDay = "1";
+let selectedPlan = ((_a = state.mapSelection) == null ? void 0 : _a.plan) || ((_b = state.plans[0]) == null ? void 0 : _b.id) || "";
+let openDay = ((_c = state.mapSelection) == null ? void 0 : _c.day) || "1";
 let animateReply = false;
 function restore() {
   try {
@@ -24,6 +24,7 @@ function restore() {
 }
 function save() {
   try {
+    state.mapSelection = { plan: selectedPlan, day: openDay };
     sessionStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
   }
@@ -69,23 +70,6 @@ function paragraphs(parent, text = "") {
 function currentReply() {
   var _a2;
   return (_a2 = lastWhere(state.messages, (message) => message.role === "assistant")) == null ? void 0 : _a2.result;
-}
-function setConnection(status) {
-  const el = get("connection");
-  const labels = { online: "接待员在线", offline: "暂时离线" };
-  el.className = "connection " + status;
-  el.replaceChildren(node("i"), document.createTextNode(labels[status]));
-}
-async function checkConnection() {
-  try {
-    const result = await Promise.race([
-      fetch("/health", { cache: "no-store" }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8e3))
-    ]);
-    setConnection(result.ok ? "online" : "offline");
-  } catch {
-    setConnection("offline");
-  }
 }
 function showTab(tab, focus = false) {
   activeTab = tab;
@@ -203,7 +187,7 @@ function stopRow(name, time, leg, arrival = false, exact = "") {
   return row;
 }
 function daySection(number, day, open) {
-  var _a2, _b, _c, _d, _e;
+  var _a2, _b2, _c2, _d, _e;
   const details = node("details", "day-card");
   details.open = open;
   const stops = ((_a2 = day.audit) == null ? void 0 : _a2.stops) || [];
@@ -211,8 +195,8 @@ function daySection(number, day, open) {
   summary.append(node("small", "", stops.length + " 站"));
   const list = node("ol", "stops");
   const contract = day.contract || {};
-  const legs = ((_b = day.audit) == null ? void 0 : _b.legs) || [];
-  if (contract.origin && contract.origin !== ((_c = stops[0]) == null ? void 0 : _c.place)) {
+  const legs = ((_b2 = day.audit) == null ? void 0 : _b2.legs) || [];
+  if (contract.origin && contract.origin !== ((_c2 = stops[0]) == null ? void 0 : _c2.place)) {
     list.append(stopRow(contract.origin + "出发", routeTime.exact(contract.start)));
   }
   for (const stop of stops) {
@@ -244,17 +228,17 @@ function daySection(number, day, open) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b, _c, _d, _e;
+  var _a2, _b2, _c2, _d, _e;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
-    var _a3, _b2;
+    var _a3, _b3;
     selectedPlan = selected ? "" : plan.id;
     openDay = String(((_a3 = plan.replannedDays) == null ? void 0 : _a3[0]) || 1);
     const top = get("plans").scrollTop;
     renderBoard();
     get("plans").scrollTop = top;
-    (_b2 = document.getElementById(heading.id)) == null ? void 0 : _b2.focus({ preventScroll: true });
+    (_b3 = document.getElementById(heading.id)) == null ? void 0 : _b3.focus({ preventScroll: true });
   });
   heading.id = "plan-toggle-" + plan.id;
   heading.setAttribute("aria-expanded", selected);
@@ -269,8 +253,8 @@ function planCard(plan) {
     for (const day of plan.replannedDays) {
       const card2 = plan.cards[day];
       const contract = card2 == null ? void 0 : card2.contract;
-      const before = (_b = plan.beforeCounts) == null ? void 0 : _b[day];
-      const after = (_d = (_c = card2 == null ? void 0 : card2.audit) == null ? void 0 : _c.stops) == null ? void 0 : _d.length;
+      const before = (_b2 = plan.beforeCounts) == null ? void 0 : _b2[day];
+      const after = (_d = (_c2 = card2 == null ? void 0 : card2.audit) == null ? void 0 : _c2.stops) == null ? void 0 : _d.length;
       if (Number.isInteger(before) && Number.isInteger(after) && before !== after) {
         summary.append(node("p", "stop-change", before + " 站 → " + after + " 站"));
       }
@@ -332,7 +316,7 @@ function comparisonView(result) {
 }
 function comparisonIsOutdated(result) {
   var _a2;
-  return (_a2 = result == null ? void 0 : result.versions) == null ? void 0 : _a2.some((version) => state.plans.some((p) => p.id === version.option_id && p.version > version.version));
+  return (result == null ? void 0 : result.outdated) || ((_a2 = result == null ? void 0 : result.versions) == null ? void 0 : _a2.some((version) => state.plans.some((p) => p.id === version.option_id && p.version > version.version)));
 }
 function currentComparison() {
   var _a2;
@@ -375,14 +359,14 @@ function putPlan(id, title, cards, version, replannedDays = [], beforeCounts = {
   else state.plans[index] = plan;
 }
 function updateBoard(result) {
-  var _a2, _b, _c;
+  var _a2, _b2, _c2;
   for (const item of result.deliverables || []) {
     if (item.kind === "compare") state.comparison = item;
     if (item.status !== "passed" || !item.cards || !item.option_id || !["plan", "revise"].includes(item.kind)) continue;
     const previous = state.plans.find((plan) => plan.id === item.option_id);
     const beforeCounts = (item.replanned_days || []).reduce((counts, day) => {
-      var _a3, _b2, _c2, _d;
-      counts[day] = (_d = (_c2 = (_b2 = (_a3 = previous == null ? void 0 : previous.cards) == null ? void 0 : _a3[day]) == null ? void 0 : _b2.audit) == null ? void 0 : _c2.stops) == null ? void 0 : _d.length;
+      var _a3, _b3, _c3, _d;
+      counts[day] = (_d = (_c3 = (_b3 = (_a3 = previous == null ? void 0 : previous.cards) == null ? void 0 : _a3[day]) == null ? void 0 : _b3.audit) == null ? void 0 : _c3.stops) == null ? void 0 : _d.length;
       return counts;
     }, {});
     putPlan(item.option_id, (previous == null ? void 0 : previous.title) || item.title, item.cards, item.version || 1, item.replanned_days, beforeCounts);
@@ -391,12 +375,12 @@ function updateBoard(result) {
       openDay = String(((_a2 = item.replanned_days) == null ? void 0 : _a2[0]) || 1);
     }
   }
-  if (Object.keys(result.days || {}).length && !((_b = result.deliverables) == null ? void 0 : _b.some((item) => item.status === "passed" && item.option_id === "current"))) {
+  if (Object.keys(result.days || {}).length && !((_b2 = result.deliverables) == null ? void 0 : _b2.some((item) => item.status === "passed" && item.option_id === "current"))) {
     putPlan("current", "正式行程", result.days, 1);
   }
   if (Object.keys(result.preview || {}).length) putPlan("preview", "试排方案", result.preview, 1);
   if (result.mode === "plan" || result.mode === "edit") state.plans = state.plans.filter((plan) => plan.id !== "preview");
-  if ((_c = result.deliverables) == null ? void 0 : _c.some((item) => item.kind === "adopt" && item.status === "passed")) {
+  if ((_c2 = result.deliverables) == null ? void 0 : _c2.some((item) => item.kind === "adopt" && item.status === "passed")) {
     showTab("plans");
     selectedPlan = "current";
   }
@@ -417,14 +401,14 @@ function syncInputs() {
   get("reset").disabled = busy;
 }
 function renderFollowups() {
-  var _a2, _b;
+  var _a2, _b2;
   const el = get("followups");
   el.replaceChildren();
   el.hidden = !!state.pending || !state.messages.length;
   if (el.hidden) return;
   const hasTwoDayPlan = state.plans.some((plan) => plan.id !== "current" && Object.keys(plan.cards).length === 2);
   if (!state.plans.length) el.append(button("chip", "规划并比较行程 ↗", () => fill(planPrompt)));
-  if (hasTwoDayPlan && !((_b = (_a2 = currentReply()) == null ? void 0 : _a2.deliverables) == null ? void 0 : _b.some((item) => item.kind === "revise"))) {
+  if (hasTwoDayPlan && !((_b2 = (_a2 = currentReply()) == null ? void 0 : _a2.deliverables) == null ? void 0 : _b2.some((item) => item.kind === "revise"))) {
     el.append(button("chip", "调整两日游第 2 天 ↗", () => fill("两日游第二天想轻松点，下午四点要到汉口站。一日游照旧，再帮我比较一下。")));
   }
   el.append(
@@ -513,12 +497,12 @@ exportButton.addEventListener("click", async () => {
   const result = currentComparison();
   if (!result) return;
   const rows = [].concat(...result.versions.map((version) => {
-    var _a2, _b;
+    var _a2, _b2;
     const stats = (_a2 = result.metrics) == null ? void 0 : _a2[version.input];
     if (!stats) return [];
     const plan = state.plans.find((item) => item.id === version.option_id);
     const arrivals = (stats.arrivals || []).map((arrival) => "第 " + arrival.day + " 天预计 " + routeTime.arrival(arrival.arrival, arrival.deadline) + " 到" + arrival.destination + "，最晚 " + routeTime.exact(arrival.deadline));
-    const changedDay = (_b = plan == null ? void 0 : plan.replannedDays) == null ? void 0 : _b.find((day) => {
+    const changedDay = (_b2 = plan == null ? void 0 : plan.replannedDays) == null ? void 0 : _b2.find((day) => {
       var _a3;
       return Number.isInteger((_a3 = plan.beforeCounts) == null ? void 0 : _a3[day]) && plan.beforeCounts[day] !== stats.daily_stops[day - 1];
     });
@@ -581,5 +565,12 @@ for (const [tab, id] of [["plans", "plans-tab"], ["comparison", "comparison-tab"
     showTab(next, true);
   });
 }
-checkConnection();
+window.addEventListener("pageshow", (event) => {
+  var _a2, _b2, _c2;
+  if (!event.persisted) return;
+  state = restore();
+  selectedPlan = ((_a2 = state.mapSelection) == null ? void 0 : _a2.plan) || ((_b2 = state.plans[0]) == null ? void 0 : _b2.id) || "";
+  openDay = ((_c2 = state.mapSelection) == null ? void 0 : _c2.day) || "1";
+  render();
+});
 render();

@@ -16,32 +16,16 @@
 </head>
 <body>
   <a class="skip" href="#route-title">跳到路线</a>
-  <header class="site-header">
-    <div class="frame header-inner">
-      <a href="/" class="brand">
-        <span class="mark" aria-hidden="true">接</span>
-        <span><strong>武汉接线台</strong><small>数命 SPU 城市 AI 接待员</small></span>
-      </a>
-      <nav aria-label="主导航">
-        <a class="nav-item" href="/">接待台</a>
-        <a class="nav-item current" aria-current="page" href="/routes">路线地图</a>
-      </nav>
-      <a class="text-button map-button" href="/">返回接待台</a>
-    </div>
-  </header>
+  <!-- shared-header -->
   <main class="frame route-page">
-    <header class="route-heading">
-      <div>
-        <h1 id="route-title" tabindex="-1">沿着路线走遍武汉</h1>
-        <p>选一份方案和日期，点亮一路上的站点。</p>
-      </div>
-      <img srcset="/web/hero-small.webp 600w, /web/wuhan-switchboard.webp 1200w" sizes="(max-width: 640px) 100vw, 75vw" src="/web/hero-small.webp" alt="" width="1440" height="960">
-    </header>
+    <header class="route-heading"><h1 id="route-title" tabindex="-1">路线地图</h1><span>武汉 · 行程编辑</span></header>
     <section class="map-layout" aria-labelledby="route-title">
       <div class="map-shell">
         <div class="map-toolbar">
           <button id="play-route" class="send" type="button" disabled>播放路线</button>
           <button id="fit-route" class="text-button" type="button" disabled>查看全程</button>
+          <button id="city-view" class="text-button" type="button">武汉全貌</button>
+          <button id="expand-map" class="text-button" type="button" aria-pressed="false">展开大图</button>
           <span id="route-progress" role="status"></span>
         </div>
         <div id="route-map" aria-label="武汉行程地图"></div>
@@ -59,6 +43,13 @@
         <div class="route-stops-header" id="route-stops-header">
           <h2 id="day-title">路线站点</h2>
           <p id="day-summary"></p>
+        </div>
+        <div id="route-editor" hidden>
+          <label for="place-picker">添加游览站点</label>
+          <div class="edit-picker"><select id="place-picker"></select><button type="button" id="add-stop" class="text-button">添加</button></div>
+          <div id="draft-stops"></div>
+          <div class="edit-actions" hidden id="edit-actions"><button class="send" type="button" id="apply-stops">应用并重排行程</button><button class="text-button" type="button" id="discard-stops">撤销改动</button></div>
+          <p id="edit-feedback" role="status"></p>
         </div>
         <ol id="route-stops"></ol>
         <div id="route-empty" class="route-empty">

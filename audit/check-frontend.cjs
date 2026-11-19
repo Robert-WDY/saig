@@ -155,14 +155,46 @@ async function main() {
     assert.match(await js("document.querySelector('.leaflet-popup-content').innerText"),/汉口站/);
     await js("Array.from(document.querySelectorAll('#route-days button')).find(el=>el.textContent.includes('1')).click()");
     assert.match(await js("document.querySelector('#day-title').textContent"),/第 1 天/);
+    const navItems = await js("Array.from(document.querySelectorAll('nav a'),a=>a.textContent)");
+    const normalMap = await js("document.querySelector('#route-map').clientHeight");
+    const center=await js("(()=>{const r=document.querySelector('#route-map').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,z:map.getZoom()}})()");
+    await cdp("Input.dispatchMouseEvent",{type:"mouseWheel",x:center.x,y:center.y,deltaX:0,deltaY:-170});
+    await wait(()=>js("map.getZoom()>"+center.z),3500);
+    await js("document.querySelector('#expand-map').click()");
+    await wait(()=>js("document.querySelector('#route-map').clientHeight>"+normalMap),3000);
+    await shot("08-展开大图");
+    await cdp("Input.dispatchKeyEvent",{type:"keyDown",key:"Escape"});
+    await wait(()=>js("!document.body.classList.contains('map-expanded')"));
+    await js("Array.from(document.querySelectorAll('#route-days button')).find(el=>el.textContent.includes('2')).click()");
+    const readState="JSON.parse(sessionStorage.getItem('saig-visitor-workspace-v1'))";
+    const targetId=await js("document.querySelector('#route-plan').value");
+    const planExpr=readState+".plans.find(p=>p.id==="+JSON.stringify(targetId)+")";
+    const beforeEdit=await js(planExpr);
+    const removedStop=await js("document.querySelector('.route-stop:has(.stop-edit) strong').textContent");
+    await js("document.querySelector('.route-stop .stop-edit').click();document.querySelector('#apply-stops').click()");
+    await wait(()=>js("!saving && !removed.size"),10000);
+    const afterDelete=await js(planExpr);
+    assert.deepEqual(afterDelete.cards['1'],beforeEdit.cards['1']);
+    assert.deepEqual(afterDelete.cards['2'].order,beforeEdit.cards['2'].order.filter(n=>n!==removedStop));
+    await js("document.querySelector('#place-picker').value="+JSON.stringify(removedStop)+"; document.querySelector('#place-picker').dispatchEvent(new Event('change'));document.querySelector('#add-stop').click();document.querySelector('#apply-stops').click()");
+    await wait(()=>js("!saving && !added.size"),10000);
+    const afterAdd=await js(planExpr);
+    assert.ok(afterAdd.cards['2'].order.includes(removedStop));
+    assert.deepEqual(afterAdd.cards['1'],beforeEdit.cards['1']);
+    assert.ok(afterAdd.cards['2'].audit.arrival<=limit);
+    await shot("09-地图重排");
     await size(390,844,true);
     await sleep(220);
     const mapMobile=await js("({width:innerWidth,scroll:document.documentElement.scrollWidth})");
     assert.equal(mapMobile.width,mapMobile.scroll);
+    assert.ok(await js("rows.filter(row=>row.coords).every(row=>map.getBounds().contains(row.coords))"));
     await shot("07-手机地图");
     await cdp("Page.navigate",{url:base});
-    await wait(()=>js("document.querySelectorAll('.message.assistant').length===5"),10000);
+    await wait(()=>js("document.querySelectorAll('.message.assistant').length===7"),10000);
 
+    assert.deepEqual(await js("Array.from(document.querySelectorAll('nav a'),a=>a.textContent)"),navItems);
+    assert.equal(await js("selectedPlan"),targetId);
+    assert.equal(await js("openDay"),"2");
     await size(390,844,true);
     await js("window.scrollTo(0,0)");
     await sleep(350);
@@ -180,7 +212,7 @@ async function main() {
     await sleep(400);
     await shot("05-手机首页");
     assert.deepEqual(exceptions,[]);
-    fs.writeFileSync(join(out,"浏览器验收.json"),JSON.stringify({desktop,mobile,mapMobile,mapTiles,results,exceptions,reset:true,passed:true},null,2),"utf8");
+    fs.writeFileSync(join(out,"浏览器验收.json"),JSON.stringify({desktop,mobile,mapMobile,mapTiles,mapEdit:{normalMap,removedStop,before:beforeEdit.cards["2"].order,afterDelete:afterDelete.cards["2"].order,afterAdd:afterAdd.cards["2"].order},results,exceptions,reset:true,passed:true},null,2),"utf8");
   } finally {
     try {await cdp("Browser.close");} catch {}
     ws.close();

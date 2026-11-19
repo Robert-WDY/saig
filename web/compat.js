@@ -25,3 +25,32 @@ function apiHeaders() {
   if (inviteCode) headers["X-SAIG-Invite"] = inviteCode;
   return headers;
 }
+
+function setConnection(status) {
+  const el = document.getElementById("connection");
+  const labels = {online: "接待员在线", offline: "暂时离线"};
+  el.className = "connection " + status;
+  el.replaceChildren(document.createElement("i"), document.createTextNode(labels[status]));
+}
+
+async function checkConnection() {
+  try {
+    const result = await Promise.race([fetch("/health", {cache: "no-store"}),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000))]);
+    setConnection(result.ok ? "online" : "offline");
+  } catch {
+    setConnection("offline");
+  }
+}
+
+function markNavigation() {
+  var target = location.pathname === "/routes" ? "/routes" : location.hash === "#workspace" ? "/#workspace" : "/#assistant";
+  document.querySelectorAll(".nav-item").forEach(function (link) {
+    var active = link.pathname + link.hash === target;
+    link.classList.toggle("current", active);
+    if (active) link.setAttribute("aria-current", "page"); else link.removeAttribute("aria-current");
+  });
+}
+markNavigation();
+window.addEventListener("hashchange", markNavigation);
+checkConnection();

@@ -11,8 +11,8 @@ const defaultState = () => ({session: newId(), messages: [], plans: [], comparis
 let state = restore();
 let busy = false;
 let activeTab = "plans";
-let selectedPlan = state.plans[0]?.id || "";
-let openDay = "1";
+let selectedPlan = state.mapSelection?.plan || state.plans[0]?.id || "";
+let openDay = state.mapSelection?.day || "1";
 let animateReply = false;
 
 function restore() {
@@ -27,6 +27,7 @@ function restore() {
 
 function save() {
   try {
+    state.mapSelection = {plan:selectedPlan, day:openDay};
     sessionStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
     // Keep running in memory if storage is full or disabled.
@@ -77,23 +78,6 @@ function paragraphs(parent, text = "") {
 
 function currentReply() {
   return lastWhere(state.messages, message => message.role === "assistant")?.result;
-}
-
-function setConnection(status) {
-  const el = get("connection");
-  const labels = {online: "接待员在线", offline: "暂时离线"};
-  el.className = "connection " + status;
-  el.replaceChildren(node("i"), document.createTextNode(labels[status]));
-}
-
-async function checkConnection() {
-  try {
-    const result = await Promise.race([fetch("/health", {cache: "no-store"}),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000))]);
-    setConnection(result.ok ? "online" : "offline");
-  } catch {
-    setConnection("offline");
-  }
 }
 
 function showTab(tab, focus = false) {
@@ -338,7 +322,7 @@ function comparisonView(result) {
 }
 
 function comparisonIsOutdated(result) {
-  return result?.versions?.some(version => state.plans.some(p => p.id === version.option_id && p.version > version.version));
+  return result?.outdated || result?.versions?.some(version => state.plans.some(p => p.id === version.option_id && p.version > version.version));
 }
 
 function currentComparison() {
@@ -585,5 +569,11 @@ for (const [tab, id] of [["plans", "plans-tab"], ["comparison", "comparison-tab"
     showTab(next, true);
   });
 }
-checkConnection();
+window.addEventListener("pageshow", event => {
+  if (!event.persisted) return;
+  state = restore();
+  selectedPlan = state.mapSelection?.plan || state.plans[0]?.id || "";
+  openDay = state.mapSelection?.day || "1";
+  render();
+});
 render();

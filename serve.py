@@ -12,6 +12,7 @@ from threading import BoundedSemaphore, Lock
 from time import monotonic
 from functools import lru_cache
 from uuid import uuid4
+from route_edits import edit_route, editable_places
 from limits import CapacityError, TurnExpired, turn_budget
 from model import ModelError, deepseek_key
 from urllib.parse import urlsplit
@@ -44,8 +45,10 @@ WEB_ASSETS = {
 
 
 @lru_cache(maxsize=100)
-def static_file(filename, media, mtime, compressed):
+def static_file(filename, media, mtime, compressed, header_mtime=0):
     data = (WEB_DIR / filename).read_bytes()
+    if header_mtime:
+        data = data.replace(b"<!-- shared-header -->", (WEB_DIR / "header.html").read_bytes())
     if compressed:
         data = gzip.compress(data, mtime=0)
     return data, '"' + hashlib.sha256(data).hexdigest() + '"'
@@ -129,11 +132,12 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 file = WEB_DIR / filename
                 if not file.is_file():
                     return self.send_json(404,{"error":"资源不存在"})
-                data,etag=static_file(filename,media,file.stat().st_mtime_ns,compressed)
+                data,etag=static_file(filename,media,file.stat().st_mtime_ns,compressed,
+                                      (WEB_DIR/"header.html").stat().st_mtime_ns if media.startswith("text/html") else 0)
                 unchanged=etag in self.headers.get("If-None-Match","").split(", ")
                 self.send_response(304 if unchanged else 200)
                 self.send_header("ETag",etag)
-                self.send_header("Cache-Control","no-cache" if media.startswith("text/html") else "public, max-age=300, must-revalidate")
+                self.send_header("Cache-Control","no-cache" if media.startswith("text/") else "public, max-age=300, must-revalidate")
                 self.send_header("Vary","Accept-Encoding")
                 self.send_header("Referrer-Policy","no-referrer")
                 self.send_header("X-Content-Type-Options","nosniff")
@@ -147,6 +151,8 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 ok=model_ready()
                 self.send_json(200 if ok else 503,{"status":"ok" if ok else "unavailable","model":agent.model.name,
                     "probe":"model_catalog","chunks":len(agent.kb.rows),"tools":[*TOOLS,"location"]})
+            elif path=="/route-places":
+                self.send_json(200,editable_places())
             elif path=="/route-points":
                 self.send_json(200,{**snapshot("points.json"),**snapshot("road_network.json").get("anchors",{}),**snapshot("route_points.json")})
             else:
@@ -154,7 +160,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
 
         def do_POST(self):
             if not self.allowed(True):return
-            if self.path not in ("/chat","/session/delete","/tool","/rag") or (invite and self.path in ("/tool","/rag")):
+            if self.path not in ("/chat","/route-edit","/session/delete","/tool","/rag") or (invite and self.path in ("/tool","/rag")):
                 return self.send_json(404,{"error":"未知入口"})
             if self.headers.get_content_type()!="application/json":
                 return self.send_json(415,{"error":"需要 application/json"})
@@ -169,9 +175,10 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 req=body.get("request_id") or uuid4().hex
                 if any(not isinstance(x,str) or not 0<len(x)<=128 for x in (sid,req)):raise ValueError()
                 if invite and not re.fullmatch(r"[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}",sid):raise ValueError()
-                if self.path=="/session/delete" and not body.get("session"):raise ValueError()
+                if self.path in ("/session/delete","/route-edit") and not body.get("session"):raise ValueError()
+                if self.path=="/route-edit" and (not isinstance(body.get("change"),dict) or not body.get("request_id")):raise ValueError()
                 q=body.get("query")
-                if self.path!="/session/delete" and (not isinstance(q,str) or not 0<len(q.strip())<=3000):raise ValueError()
+                if self.path not in ("/session/delete","/route-edit") and (not isinstance(q,str) or not 0<len(q.strip())<=3000):raise ValueError()
                 if self.path in ("/tool","/rag") and body.get("tool") not in (*TOOLS,"location"):raise ValueError()
                 if self.path=="/rag" and body["tool"]=="location":raise ValueError()
             except (ValueError,TypeError,UnicodeError):
@@ -192,6 +199,13 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                     if self.path=="/session/delete":
                         agent.store.delete(internal)
                         result={"deleted":True}
+                    elif self.path=="/route-edit":
+                        try:
+                            result=edit_route(agent.store,internal,req,body["change"])
+                        except Conflict:
+                            raise
+                        except ValueError as exc:
+                            return self.send_json(422,{"error":str(exc)})
                     elif self.path=="/chat":
                         debug=not invite and body.get("diagnostics") is True
                         with capture(debug) as events,timed("chat"):
