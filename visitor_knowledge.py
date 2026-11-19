@@ -90,6 +90,6 @@ def answer_questions(model,kb,jobs,trace,original=None):
             selected.append(doc["id"])
             if doc["id"]=="register":parts.append(("Official registration: " if en else "官方报名入口：")+doc["source"])
         if not selected:parts.append(f"The official materials don't confirm \"{q.strip('？?')}\" yet; please check with the organisers." if en
-                                     else f"现有资料不足以确认「{q.strip('？?')}」，需要向相关方核实。")
+                                     else f"「{q.strip('？?')}」在我手上的官方资料里暂时没有记载，建议以地图 App 或官方渠道为准。")
         trace.append({"step":"answered_question","tool_name":name,"query":q,"supported":bool(selected),"sources":selected})
     return parts,citations

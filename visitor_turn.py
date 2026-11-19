@@ -17,7 +17,7 @@ INSTRUCTION="""你是武汉数命 SPU 城市 AI 接待员，接待武汉旅游�
 出门/集合地、游玩之前已经身处的地点是 origin，赶车或接人处是 destination；车到或车开时刻为 end，提前量单独填 buffer 分钟。相对改期选 later_start/earlier_start/later_end/earlier_end，填正的分钟数，未更改的字段不要重复生成。只逛指定地点要写 must，并用 max_stops 限制数量。普通新建单日建议保留游客兴趣供攻略检索。
 预览不写正式卡。已有行程上问更动的效果、先看看，mode 为 preview；明确委托直接改才是 edit。单日原卡只有一天时可直接定位；已有多日正式卡时：只改明确点名的某一天（第N天）的出发或结束时间（含推迟、提前多久），选 edit；改站点、顺序、多天或没说哪天，选 detailed。两种情况都不得选 info 或 keep。没有原卡时修改或读卡不要虚构。needs_card 表示正在引用已经存在的正式卡，新建、查资料和根据偏好推荐均填 false。keep 只用于没有其他待办、单纯决定保留原样。只查看已存信息选 info 和真实记录编号；确认已有备选选 confirm_preview。
 只有游客实际要求逐日排程或修改卡片，且有此表不能表达的行程约束/操作时，选 detailed：多日、出行日期、人数/交通限制、酒店、预算、具体景点预约窗口/停留时长、半日时长约束、区域硬限制、替换删站、指定攻略或撤回等。普通推荐、问地址、问开放时间、询问学习机会都选 info，可同时写入偏好。推荐附近哪里可以逛也选 info。勿将具体有空的起止时钟误作半日。无法绑定的硬性条件不准丢弃。
-公共问题一项一个工具及补全主体的独立检索问句，彼此不要重复。不要根据一句“怎么走顺路、来得及吗”自行增设独立开放时间或定位问题；排程器会计算交通。介绍、场地、街区、社区访问和学习方式用主题知识库，纯经纬度或地图导航才用 location 且 query 只填地点名。明确每项事实的权属实体。根据近期对话消解'那里'、'刚才那些'。按兴趣在之前的候选里再推荐，是推荐任务，要把候选名称、兴趣、地理范围带入工具问句；只复述兴趣不能完成推荐。
+公共问题一项一个工具及补全主体的独立检索问句，彼此不要重复。不要根据一句“怎么走顺路、来得及吗”自行增设独立开放时间或定位问题；排程器会计算交通。介绍、场地、街区、社区访问和学习方式用主题知识库，问某个地点在哪、怎么去、坐地铁到哪站，或纯经纬度和地图导航，用 location 且 query 只填地点名。打招呼、道谢、问你是谁或能做什么、与这些主题无关的闲聊，jobs 留空、mode 选 info，由接待员直接寒暄。明确每项事实的权属实体。根据近期对话消解'那里'、'刚才那些'。按兴趣在之前的候选里再推荐，是推荐任务，要把候选名称、兴趣、地理范围带入工具问句；只复述兴趣不能完成推荐。
 明确交代今后推荐按某兴趣，是授权持久保存；仅本次想去不存。并行提问不取消保存。facts 的 subject 用 self 或 self.mother 等已有关系，relation 用 likes/name/stays_at；quote 必须是包含对象和陈述的本轮原文。纠正旧值用 set，新增喜好用 add，删除指定值用 remove。只读不得写。所有输出数组即使为空也要给出。"""
 def clock_value(value,quote):
     if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d",value):
@@ -126,7 +126,8 @@ def interpret_turn(model,q,state,validate):
     if mode=="detailed":
         return None
     relative=any(r["field"].startswith(("later_","earlier_")) for r in frame["fields"])
-    missing_card=(relative or mode in ("edit","keep") or (mode=="info" and frame["needs_card"] and not frame["jobs"])) and not state["days"]
+    # Thanks or small talk can look like a read of the trip card; only real edits need an existing card.
+    missing_card=(relative or mode in ("edit","keep")) and not state["days"]
     spec={"mode":mode,"days":[],"facts":frame["facts"],"tools":frame["jobs"],"records":[],
           "reads":[],"question":"","batch":True}
     if missing_card:

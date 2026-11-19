@@ -35,3 +35,21 @@ class Polish(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
+
+class Conversation(unittest.TestCase):
+    def test_small_talk_falls_back_without_the_model(self):
+        from unittest.mock import Mock
+        from small_talk import small_talk
+        model=Mock();model.ask.side_effect=RuntimeError("offline")
+        self.assertIn("江豚接待员",small_talk(model,"你好",{"turns":[],"days":{}}))
+        self.assertIn("porpoise",small_talk(model,"hello, who are you?",{"turns":[],"days":{}}))
+
+    def test_directions_name_the_metro_station(self):
+        from agent import directions
+        from places import locate
+        place=next(p for p in locate("黄鹤楼")["catalog"] if p["name"]=="黄鹤楼")
+        text=directions(place)
+        self.assertIn("司门口黄鹤楼站",text)
+        self.assertIn("5号线",text)
+        self.assertNotIn("纬度",text)

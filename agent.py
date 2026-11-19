@@ -176,9 +176,7 @@ class Agent:
                 locations=self.tool(name,query)
                 trace.append({"tool":name,"result":locations})
                 for p in locations["catalog"]:
-                    point=p.get("point")
-                    coord=f"（{point['crs']}，纬度 {point['lat']}，经度 {point['lon']}）" if point else ""
-                    parts.append(f"{p['name']}：{p['area']}{coord} {p['map_url']}")
+                    parts.append(directions(p))
                 parts.extend(p["address"]+"（GCJ-02 "+p["gcj02"]+"）" for p in locations["geocodes"])
                 if locations.get("notice"):
                     parts.append(locations["notice"])
@@ -562,13 +560,19 @@ class Agent:
                     draft.pop("pending_days",None)
             if spec.get("facts") and mode!="preview":
                 parts.append("已更新你的记录："+"；".join(dict.fromkeys(f["quote"].rstrip("。！？") for f in spec["facts"]))+"。")
-            if not parts and not independent and not draft["days"] and not draft["facts"] and not spec.get("reads"):
-                parts.append("当前会话还没有已确认的行程或个人资料。")
             if not parts and not independent:
-                from session_answers import recall
-                answer,refs=recall(self.model,q,state)
-                parts.append(answer)
-                trace.append({"step":"session_read","query":q,"records":refs})
+                # Nothing to look up or schedule: greet, thank, explain what we do, or admit what we lack.
+                refs=[]
+                if state["days"] or state["facts"]:
+                    from session_answers import recall
+                    answer,refs=recall(self.model,q,state)
+                    if refs:
+                        parts.append(answer)
+                        trace.append({"step":"session_read","query":q,"records":refs})
+                if not refs:
+                    from small_talk import small_talk
+                    parts.append(small_talk(self.model,q,state))
+                    trace.append({"step":"small_talk"})
         except ValueError as err:
             draft=deepcopy(state)
             mode="clarify"
@@ -584,3 +588,15 @@ class Agent:
                     facts=draft["facts"],trace=trace)
         if deliveries is not None:result["deliverables"]=deliveries
         return draft,result
+
+
+def directions(place):
+    """How to get there: nearest metro station from the handbook access table, then the map search link."""
+    from transport import ACCESS, snapshot
+    area=place["area"].split("；")[0]
+    station=ACCESS.get(place["name"])
+    text=f"{place['name']}在{area}。"
+    if station:
+        lines=[n for n,stops in snapshot("metro_lines.json")["lines"].items() if station in stops]
+        text+=f"坐地铁到{station}站"+(f"（{'、'.join(lines)}）" if lines else "")+"，出站后按地图导航步行过去。"
+    return text+f"地图导航：{place['map_url']}"
