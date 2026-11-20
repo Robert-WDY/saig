@@ -13,7 +13,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 from knowledge import TOOLS as TOPICS
-from places import PLACES, ATLAS
+from places import PLACES, ATLAS, region
 from planning import Invalid
 from trip_contract import GUIDES, trip_review
 from datetime import date as _date, timedelta as _td
@@ -74,6 +74,12 @@ def _metro(name):
 
 FOOD = [r["name"] for r in ATLAS if r.get("category") == "美食" and r["name"] in PLACES and PLACES[r["name"]].get("minutes")]
 LUNCH = [11 * 60, 13 * 60 + 45]
+CORE = {"汉口", "武昌", "汉阳"}
+
+
+def needs_lunch(start, end):
+    """A day needs a meal stop when it covers at least 45 minutes of 11:30-13:30."""
+    return min(end, 13 * 60 + 30) - max(start, 11 * 60 + 30) >= 45
 
 
 def opening_notes(days):
@@ -88,9 +94,11 @@ def opening_notes(days):
                 continue
             bits = []
             if h.get("closed") and not when:
-                bits.append("周" + "、周".join(WEEKDAY_CN[d] for d in h["closed"]) + "闭馆")
+                bits.append("周" + "、周".join(WEEKDAY_CN[d] for d in h["closed"]) + "闭馆" + ("（法定节假日除外）" if h.get("holiday_open") else ""))
             if h.get("booking"):
                 bits.append("需提前预约")
+            elif h.get("booking") is False:
+                bits.append("无需预约")
             if h.get("last_entry"):
                 bits.append(h["last_entry"] + " " + h.get("entry_word", "停止入场"))
             if h.get("note"):
@@ -115,6 +123,15 @@ VENUE_STATIONS = {"智民里": "江汉路", "数命SPU社区": "江汉路"}
 METRO_STATIONS = {s for stops in snapshot("metro_lines.json")["lines"].values() for s in stops}
 
 
+def free_day(contract):
+    """A day kept with its date, times and lodging but no stops (the visitor wants it free)."""
+    c = deepcopy(contract)
+    c["must"] = []
+    return {"contract": c, "order": [], "free": True, "diff": {}, "guide": None, "guide_source": None,
+            "audit": {"legs": [], "stops": [], "arrival": c["start"], "last_leg": 0, "buffer": c.get("buffer", 0),
+                      "violations": [], "group_fare_bound": 0}}
+
+
 def idle_gaps(card, least=30):
     """Free time the scheduler left before a stop (e.g. waiting for a moved stop's window)."""
     stops, out = card["audit"]["stops"], []
@@ -129,6 +146,9 @@ def day_lines(days):
     out = []
     for key in sorted(days, key=int):
         card = days[key]
+        if not card["audit"]["stops"]:
+            out.append(f"第{key}天：自由活动（不排景点）")
+            continue
         stops = " → ".join(f"{hhmm(s['start'])} {s['place']}" for s in card["audit"]["stops"])
         c = card["contract"]
         tail = f"（约 {hhmm(card['audit']['arrival'])} 到{c['destination']}）" if c.get("destination") else ""
@@ -194,14 +214,14 @@ SCHEMAS = {
             "pace": {"type": "string", "enum": ["normal", "relaxed"], "description": "relaxed：老人小孩、怕累，少站少走"},
             "max_walk_m": {"type": "integer", "minimum": 200, "maximum": 5000, "description": "每段步行上限（米），只在游客明确提出时填"}}}},
     "edit_trip": {
-        "description": "修改已有行程的某一天：推迟/提前出发、改起止时间、删站、加站、换站，把某一站挪到上午/下午/傍晚/指定时间之后（move_stop）、改当天出发地或结束地（set_origin / set_destination，如「从酒店出发」「最后到汉口站赶火车」）、改某站停留时长（set_duration）、按顺路重新规划整天顺序（reoptimize，如「太绕了」「重新排一下」）、把某站挪到另一天（move_to_day，place + to_day）、两天对调（swap_days，to_day）、设这一天的日期（set_date，用于避开闭馆日）。move_stop、改起终点都会自动按顺路重排全天顺序，其余站点保留。游客说「X 不想早上去，换到下午」用 move_stop，不要改出发时间。未提到的站点保留。排不下时会返回真实冲突，如实告诉游客并给出选项。",
+        "description": "修改已有行程的某一天：推迟/提前出发、改起止时间、删站、加站、换站，把某一站挪到上午/下午/傍晚/指定时间之后（move_stop）、改当天出发地或结束地（set_origin / set_destination，如「从酒店出发」「最后到汉口站赶火车」）、改某站停留时长（set_duration）、按顺路重新规划整天顺序（reoptimize，如「太绕了」「重新排一下」）、把某站挪到另一天（move_to_day，place + to_day）、两天对调（swap_days，to_day）、设这一天的日期（set_date，用于避开闭馆日）、把这一天空出来自由活动（clear_day，保留日期和住处；游客点名要保留的站在同一次调用里写 place + to_day，会先挪过去，挪不进就整体不改）。move_stop、改起终点都会自动按顺路重排全天顺序，其余站点保留。游客说「X 不想早上去，换到下午」用 move_stop，不要改出发时间。未提到的站点保留。排不下时会返回真实冲突，如实告诉游客并给出选项。",
         "parameters": {"type": "object", "additionalProperties": False, "required": ["day", "actions"], "properties": {
             "day": {"type": "integer", "minimum": 1, "maximum": 5},
             "actions": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"type": "object", "additionalProperties": False,
                         "required": ["type"], "properties": {
                             "type": {"type": "string", "enum": ["delay_start", "advance_start", "set_start", "set_end", "remove_stop", "add_stop", "replace_stop", "move_stop",
                                                               "set_origin", "set_destination", "set_duration", "reoptimize",
-                                                              "move_to_day", "swap_days", "set_date"]},
+                                                              "move_to_day", "swap_days", "set_date", "clear_day"]},
                             "to_day": {"type": "integer", "minimum": 1, "maximum": 5, "description": "move_to_day / swap_days 用：目标天"},
                             "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "set_date 用：这一天的日期"},
                             "period": {"type": "string", "enum": ["morning", "afternoon", "evening"], "description": "move_stop 用：挪到上午 / 下午 / 傍晚"},
@@ -457,7 +477,7 @@ class Toolbox:
                 break
             near = []
             for n, p in PLACES.items():
-                if not p.get("minutes") or n in card["order"] or n in skip or n in FOOD:
+                if not p.get("minutes") or n in card["order"] or n in skip or n in FOOD or region(n) not in CORE:
                     continue
                 d = min((straight_km(n, m) or 99) for m in card["order"])
                 if d <= 4 and p["minutes"] <= free - 30:
@@ -478,15 +498,18 @@ class Toolbox:
         return card
 
     def _add_lunch(self, key, card, op, used):
-        """New plans that span lunch get a food street around noon (nearest to where the visitor is then)."""
-        noon = next((s for s in card["audit"]["stops"] if s["end"] >= 12 * 60), card["audit"]["stops"][-1] if card["audit"]["stops"] else None)
-        if not noon:
+        """Plans that cover lunch get a food stop around noon, nearest to where the visitor is then."""
+        c = card["contract"]
+        stops = card["audit"]["stops"]
+        anchor = min(stops, key=lambda s: abs((s["start"] + s["end"]) / 2 - 12 * 60))["place"] if stops else c.get("origin")
+        if not anchor:
             return card, None
-        options = sorted((f for f in FOOD if f not in card["order"] and f not in used and f not in op.get("exclude", [])),
-                         key=lambda f: straight_km(noon["place"], f) or 99)
-        for food in options[:2]:
-            edit = {"day": int(key), "query": "", "set": {"windows": {food: [hhmm(LUNCH[0]), hhmm(LUNCH[1])]}},
-                    "require": [food], "add": list(card["order"]), "mobility": deepcopy(card["contract"].get("mobility") or {"rules": []}),
+        window = [max(LUNCH[0], c["start"]), min(LUNCH[1], c["end"])]
+        options = sorted((f for f in FOOD if f not in card["order"] and f not in used and f not in op.get("exclude", [])
+                          and (straight_km(anchor, f) or 99) <= 8), key=lambda f: straight_km(anchor, f) or 99)
+        for food in options[:4]:
+            edit = {"day": int(key), "query": "", "set": {"windows": {food: [hhmm(window[0]), hhmm(window[1])]}},
+                    "require": [food], "add": list(card["order"]), "mobility": deepcopy(c.get("mobility") or {"rules": []}),
                     "avoid": op.get("avoid", []), "reoptimize": True}
             try:
                 return self.agent.day(key, edit, card, self.trace), food
@@ -532,13 +555,12 @@ class Toolbox:
             card = self.agent.day(str(d), op, None, self.trace)
             if pace != "relaxed":
                 card = self._fill_day(str(d), card, op, used)
-            if meals and s <= 11 * 60 + 30 and e >= LUNCH[1] and not lunch_stop(card):
+            if meals and needs_lunch(s, e) and not lunch_stop(card):
                 card, food = self._add_lunch(str(d), card, op, used)
                 if food:
                     meal_notes.append(f"第{d}天中午加了{food}吃午饭")
-            lunch = lunch_stop(card)
-            if meals and s <= 11 * 60 + 30 and e >= LUNCH[1] and not lunch:
-                meal_notes.append(f"第{d}天中午没有排进吃饭的站，建议在 12:00 前后就近吃")
+            if meals and needs_lunch(s, e) and not lunch_stop(card):
+                meal_notes.append(f"第{d}天中午没排进吃饭的站（附近没有能顺路插入的美食街），建议 12:00 前后在当时所在的站附近吃")
             result[str(d)] = card
             used.update(card["order"])
         review = trip_review(result)
@@ -567,14 +589,22 @@ class Toolbox:
         if b not in days or a not in days or a == b:
             raise Invalid(f"需要两个已有的不同日期。现有：{'、'.join(f'第{k}天' for k in sorted(days, key=int))}")
         new = dict(days)
+        # The visitor's own per-stop requirements (stay length, time window) travel with the stop.
+        durations = {**days[b]["contract"].get("durations", {}), **days[a]["contract"].get("durations", {})}
+        windows = {**days[b]["contract"].get("windows", {}), **days[a]["contract"].get("windows", {})}
         def rerun(key, stops, base, extra=None):
             c = days[key]["contract"]
-            op = {"day": int(key), "query": "", "set": {}, "mobility": deepcopy(c.get("mobility") or {"rules": []}),
+            keep = {"durations": {n: durations[n] for n in stops if n in durations},
+                    "windows": {n: [hhmm(windows[n][0]), hhmm(windows[n][1])] for n in stops if n in windows}}
+            op = {"day": int(key), "query": "", "set": {k: v for k, v in keep.items() if v}, "mobility": deepcopy(c.get("mobility") or {"rules": []}),
                   "add": stops, "remove": [n for n in days[key]["order"] if n not in stops],
                   "unrequire": [n for n in c.get("must", []) if n not in stops], "reoptimize": True,
                   "avoid": sorted({n for k, v in days.items() if k not in (a, b) for n in v["order"]})}
             if extra:
                 op["require"] = [extra]
+            if base.get("free"):
+                # A free day gets exactly the stops moved into it, not a fresh guide route.
+                base = {**base, "order": list(stops)}
             return self.agent.day(key, op, base, self.trace)
         if action["type"] == "move_to_day":
             p = self._place(action.get("place", ""))
@@ -582,10 +612,7 @@ class Toolbox:
                 raise Invalid(f"第{a}天没有「{p}」。当天站点：{'、'.join(days[a]['order'])}")
             new[b] = rerun(b, days[b]["order"] + [p], days[b], extra=p)
             rest = [n for n in days[a]["order"] if n != p]
-            if rest:
-                new[a] = rerun(a, rest, days[a])
-            else:
-                new.pop(a)
+            new[a] = rerun(a, rest, days[a]) if rest else free_day(days[a]["contract"])
         else:
             # Each day keeps its own times and date; the stops trade places.
             new[a] = rerun(a, list(days[b]["order"]), days[a])
@@ -605,6 +632,26 @@ class Toolbox:
         keep = list(old["order"])
         op = {"day": day, "query": "", "set": {}, "mobility": deepcopy(c.get("mobility") or {"rules": []}),
               "avoid": sorted({n for k, v in days.items() if k != key for n in v["order"]})}
+        if any(a["type"] == "clear_day" for a in actions):
+            # Keepers move first (place + to_day on the clear_day action or separate move_to_day actions);
+            # if any of them does not fit, nothing changes.
+            snapshot = deepcopy(self.draft.get("days") or {})
+            moves = [a for a in actions if a["type"] == "move_to_day"]
+            moves += [{"type": "move_to_day", "place": a["place"], "to_day": a["to_day"]} for a in actions
+                      if a["type"] == "clear_day" and a.get("place") and a.get("to_day")]
+            for m in moves:
+                try:
+                    self._cross_day(day, m)
+                except Invalid as exc:
+                    self.draft["days"] = snapshot
+                    return {"ok": False, "unchanged": True, "error": f"「{m.get('place')}」挪不进第{m.get('to_day')}天：{exc}",
+                            "hint": "行程保持原样，第{0}天也没有清空。如实告诉游客挪不进去的原因，给出选择：删掉目标那天的某一站腾时间，或延长那天结束时间，或者干脆不保留这一站。".format(day)}
+            days = dict(self.draft.get("days") or {})
+            dropped = list(days[key]["order"])
+            days[key] = free_day(days[key]["contract"])
+            self._commit(days, "edit")
+            return {"ok": True, "summary_lines": day_lines(days), "dropped": dropped, "moved": [m["place"] for m in moves],
+                    "reminder": "告诉游客这一天已空出来自由活动，日期和住处不变；moved 是挪去别的天的站，dropped 是取消的站。只说实际发生的事。"}
         cross = [a for a in actions if a["type"] in ("move_to_day", "swap_days")]
         if cross:
             try:

@@ -266,3 +266,82 @@ class RightNowTests(KernelTests):
         box = Toolbox(self.agent, {"days": {}}, [])
         box._now = lambda: ("2026-11-24", 21 * 60 + 30)
         self.assertFalse(box.call("plan_now", {"location": "江汉路"})["ok"])
+
+
+class AuditFixTests(KernelTests):
+    def test_last_entry_holds_even_with_a_visitor_window(self):
+        from planning import new_contract, evaluate
+        c = new_contract()
+        c.update(start=16 * 60 + 30, end=18 * 60, date="2026-11-24", durations={"湖北省博物馆": 30})
+        self.assertIn("湖北省博物馆16:00后停止入场", evaluate(c, ["湖北省博物馆"])["violations"])
+        c["windows"] = {"湖北省博物馆": [16 * 60 + 30, 17 * 60]}
+        self.assertIn("湖北省博物馆16:00后停止入场", evaluate(c, ["湖北省博物馆"])["violations"])
+
+    def test_statutory_holiday_overrides_closed_day(self):
+        from planning import new_contract, evaluate
+        c = new_contract()
+        c["date"] = "2027-02-08"  # Monday, Spring Festival statutory day
+        self.assertEqual(evaluate(c, ["湖北省博物馆"])["violations"], [])
+        c["date"] = "2026-11-23"
+        self.assertIn("湖北省博物馆周一闭馆", evaluate(c, ["湖北省博物馆"])["violations"])
+
+    def test_lunch_trigger_covers_any_day_across_noon(self):
+        from kernel_tools import needs_lunch
+        self.assertTrue(needs_lunch(11 * 60 + 45, 16 * 60 + 30))
+        self.assertTrue(needs_lunch(9 * 60, 13 * 60 + 30))
+        self.assertFalse(needs_lunch(14 * 60, 18 * 60))
+        self.assertFalse(needs_lunch(8 * 60, 11 * 60 + 50))
+
+    def test_fill_never_adds_suburban_places(self):
+        from places import region
+        draft = {"days": {}}
+        box = Toolbox(self.agent, draft, [])
+        box.call("plan_trip", {"days": 1, "must": [{"place": "湖北省博物馆"}]})
+        added = [n for n in draft["days"]["1"]["order"] if n != "湖北省博物馆"]
+        self.assertTrue(all(region(n) in {"汉口", "武昌", "汉阳"} for n in added), added)
+
+    def test_moving_keeps_stay_length_and_leaves_a_free_day(self):
+        draft = {"days": {}}
+        box = Toolbox(self.agent, draft, [])
+        box.call("plan_trip", {"days": 2, "start_date": "2026-11-24", "stay": "江汉路", "pace": "relaxed", "meals": False,
+                               "must": [{"place": "东湖绿道", "day": 1}, {"place": "黄鹤楼", "day": 2}]})
+        for k in ("1", "2"):
+            extra = [n for n in draft["days"][k]["order"] if n not in ("东湖绿道", "黄鹤楼")]
+            if extra:
+                box.call("edit_trip", {"day": int(k), "actions": [{"type": "remove_stop", "place": n} for n in extra]})
+        box.call("edit_trip", {"day": 1, "actions": [{"type": "set_duration", "place": "东湖绿道", "duration_minutes": 80}]})
+        r = box.call("edit_trip", {"day": 1, "actions": [{"type": "move_to_day", "place": "东湖绿道", "to_day": 2}]})
+        self.assertTrue(r["ok"], r)
+        day1, day2 = draft["days"]["1"], draft["days"]["2"]
+        self.assertTrue(day1.get("free"))
+        self.assertEqual((day1["contract"]["date"], day1["contract"]["origin"]), ("2026-11-24", "江汉路"))
+        stay = {s["place"]: s["end"] - s["start"] for s in day2["audit"]["stops"]}
+        self.assertEqual(stay["东湖绿道"], 80)
+        r = box.call("edit_trip", {"day": 2, "actions": [{"type": "move_to_day", "place": "东湖绿道", "to_day": 1}]})
+        self.assertEqual(draft["days"]["1"]["order"], ["东湖绿道"])
+
+    def test_less_walk_never_picks_a_long_walk(self):
+        from transport import choose
+        leg = choose("黄鹤楼", "东湖绿道", {"rules": [], "default_preference": "less_walk"}, 600, {})
+        self.assertNotEqual(leg["mode"], "walk")
+
+
+class ClearDayTests(KernelTests):
+    def test_clear_day_is_atomic_with_its_keeper(self):
+        draft = {"days": {}}
+        box = Toolbox(self.agent, draft, [])
+        box.call("plan_trip", {"days": 2, "start_date": "2026-11-24", "stay": "江汉路", "pace": "relaxed", "meals": False,
+                               "must": [{"place": "东湖绿道", "day": 1}, {"place": "黄鹤楼", "day": 2}]})
+        before = list(draft["days"]["1"]["order"])
+        box.call("edit_trip", {"day": 2, "actions": [{"type": "set_end", "time": "11:00"}]})
+        r = box.call("edit_trip", {"day": 1, "actions": [{"type": "clear_day", "place": "东湖绿道", "to_day": 2}]})
+        self.assertFalse(r["ok"])
+        self.assertEqual(draft["days"]["1"]["order"], before)
+        box.call("edit_trip", {"day": 2, "actions": [{"type": "set_end", "time": "18:00"}]})
+        extra = [n for n in draft["days"]["2"]["order"] if n != "黄鹤楼"]
+        if extra:
+            box.call("edit_trip", {"day": 2, "actions": [{"type": "remove_stop", "place": n} for n in extra]})
+        r = box.call("edit_trip", {"day": 1, "actions": [{"type": "clear_day", "place": "东湖绿道", "to_day": 2}]})
+        self.assertTrue(r["ok"], r)
+        self.assertTrue(draft["days"]["1"].get("free"))
+        self.assertIn("东湖绿道", draft["days"]["2"]["order"])

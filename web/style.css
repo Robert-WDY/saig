@@ -396,19 +396,55 @@ dialog::backdrop { background: #15262188; }
 .work-steps li.failed::before { border-color: #b2644c; background: #fbede6; }
 .live-text { margin-top: 8px; white-space: pre-wrap; font-size: 14px; line-height: 1.75; color: var(--ink); max-width: 640px; }
 
-.trip-takeaway { margin: 0 0 10px; padding: 10px 12px 12px; background: #fff3df; border: 1px solid #f0d9b5; border-radius: 10px; }
+.trip-takeaway { margin: 0 0 10px; padding: 10px 0 12px; border-bottom: 1px solid var(--accent-dark); }
 .takeaway-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.takeaway-head strong { color: var(--accent); font-size: 14px; }
-.takeaway-date { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #5b5146; }
-.takeaway-date input { font: inherit; font-size: 13px; padding: 3px 8px; border: 1px solid #e3cfae; border-radius: 999px; background: #fffaf2; color: var(--ink); }
-.takeaway-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.takeaway-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 6px; border: 1px solid #e3cfae; border-radius: 8px; background: #fffdf8; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
-.takeaway-actions button:hover { background: #fff; border-color: var(--accent); color: var(--accent); }
+.takeaway-head strong { color: var(--ink); font-size: 13px; letter-spacing: .02em; }
+.takeaway-date { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary); }
+.takeaway-date input { font: inherit; font-size: 12px; padding: 2px 6px; border: 1px solid var(--accent-dark); border-radius: 3px; background: transparent; color: var(--ink); }
+.takeaway-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.takeaway-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 6px; border: 1px solid var(--accent-dark); border-radius: 3px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.takeaway-actions button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 .takeaway-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.takeaway-actions svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.now-plan { border: 1px solid #e3cfae; background: #fff3df; color: var(--accent-dark); border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer; margin-right: 8px; }
+.takeaway-actions svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.now-plan { border: 1px solid var(--accent-dark); background: transparent; color: var(--accent-dark); border-radius: 3px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer; margin-right: 8px; }
 .now-plan:hover { border-color: var(--accent); }
 .now-plan { display: inline-flex; align-items: center; gap: 4px; }
 .now-plan svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 .leg .amap-nav { white-space: nowrap; font-size: 12px; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+/* 3D flyover */
+.hero-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.judge-tour.fly-hero { background: var(--orange); }
+.board-map-bar { gap: 10px; }
+.fly-button { margin-left: auto; border: 0; border-radius: 3px; background: var(--orange); color: #fff; font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; cursor: pointer; }
+.fly-button:hover { filter: brightness(1.08); }
+body.flyover-open { overflow: hidden; }
+.flyover { position: fixed; inset: 0; z-index: 3000; background: linear-gradient(#bfe0f0 0%, #e9f3f2 55%, #f4eee0 100%); color: var(--ink); }
+.flyover-stage, .flyover-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.flyover-head { position: absolute; top: 16px; left: 20px; display: flex; align-items: baseline; gap: 12px; pointer-events: none; }
+.flyover-head strong { font-size: 20px; background: #fffaf0e6; padding: 4px 12px; border-radius: 3px; border: 1px solid var(--accent-dark); }
+.flyover-hint { font-size: 12px; color: var(--secondary); }
+.flyover-caption { position: absolute; left: 20px; bottom: 84px; min-width: 220px; max-width: min(420px, calc(100vw - 40px)); padding: 12px 16px; background: #fffaf0f2; border: 1px solid var(--accent-dark); border-left: 6px solid var(--orange); border-radius: 3px; display: grid; gap: 2px; animation: fly-in .35s ease-out; }
+.flyover-caption small { color: var(--orange); font-weight: 700; font-size: 12px; }
+.flyover-caption strong { font-size: 22px; }
+.flyover-caption span { font-size: 13px; color: var(--secondary); }
+@keyframes fly-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.flyover-steps { position: absolute; top: 60px; left: 20px; margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; max-width: calc(100vw - 40px); }
+.flyover-steps li { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #fffaf0cc; border: 1px solid var(--line); color: var(--secondary); }
+.flyover-steps li.done { background: #e5ecfb; border-color: var(--accent); color: var(--accent-dark); }
+.flyover-steps li.now { background: var(--orange); border-color: var(--orange); color: #fff; }
+.flyover-bar { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px; background: #fffaf0f2; border: 1px solid var(--accent-dark); border-radius: 3px; }
+.flyover-bar button { font: inherit; font-size: 13px; min-height: 36px; padding: 0 14px; border: 1px solid var(--accent-dark); border-radius: 3px; background: transparent; color: var(--ink); cursor: pointer; }
+.flyover-bar button:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.flyover-bar button:disabled { opacity: .45; cursor: default; }
+.flyover-bar .flyover-close { background: var(--ink); color: #fff; }
+.flyover-view { position: absolute; inset: 0; margin: 0; overflow: hidden; opacity: 0; transition: opacity .45s; background: #000; }
+.flyover-view.show { opacity: 1; }
+.flyover-view img { width: 112%; height: 112%; object-fit: cover; transform-origin: 30% 50%; }
+.flyover-view.show img { animation: lookout 5.6s ease-in-out forwards; }
+@keyframes lookout { from { transform: scale(1.02) translateX(0); } to { transform: scale(1.1) translateX(-9%); } }
+.flyover-view figcaption { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); padding: 8px 18px; background: #172751d9; color: #fff; font-size: 18px; letter-spacing: .06em; border-radius: 3px; white-space: nowrap; }
+@media (max-width: 560px) { .flyover-head strong { font-size: 16px; } .flyover-caption { bottom: 76px; } .flyover-caption strong { font-size: 18px; } .flyover-view figcaption { font-size: 14px; white-space: normal; text-align: center; width: 86%; } }
+@media (prefers-reduced-motion: reduce) { .flyover-view.show img { animation: none; } }
+.stops li.free-day { color: var(--secondary); padding: 10px 0; }

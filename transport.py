@@ -179,7 +179,10 @@ def choose(a,b,mobility,minute,cache,strict=False):
     def rank(row):
         inf=float("inf")
         if budget is not None: return (row["fare_bound"],row["minutes"])
-        if pref=="less_walk":return (row["walk_m"] if row["walk_m"] is not None else inf,row["minutes"])
+        if pref=="less_walk":
+            # Taxis need no walking; metro/transit legs carry about 600 m of station access when unknown.
+            walk=0 if row["mode"]=="taxi" else row["walk_m"] if row["walk_m"] is not None else 600
+            return (max(0,walk-800),row["minutes"])
         if pref=="cheap":return (row["group_fare"] if row["group_fare"] is not None else inf,row["minutes"])
         if pref=="fewer_changes":return (row["changes"],row["minutes"])
         if pref in ("metro","walk","taxi"):

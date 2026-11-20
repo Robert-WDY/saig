@@ -4,6 +4,9 @@
   },
   "private": true,
   "scripts": {
-    "build": "esbuild web/avatar.js web/chat.js web/landmarks.js web/wuhan-map.js web/map-icons.js web/city.js web/routes.js web/route-time.js web/poster.js --target=chrome69,safari12 --charset=utf8 --outdir=web/dist"
+    "build": "esbuild web/avatar.js web/chat.js web/landmarks.js web/wuhan-map.js web/map-icons.js web/city.js web/routes.js web/route-time.js web/poster.js --target=chrome69,safari12 --charset=utf8 --outdir=web/dist && esbuild web/flyover.js --bundle --minify --format=iife --charset=utf8 --target=chrome80,safari14 --outfile=web/dist/flyover.js"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
   }
 }

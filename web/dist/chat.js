@@ -1,5 +1,5 @@
 "use strict";
-var _a, _b, _c, _d, _e, _f, _g;
+var _a, _b, _c, _d, _e, _f, _g, _h, _i;
 const get = (id) => document.getElementById(id);
 const question = get("question");
 const chatWindow = get("chat-window");
@@ -487,6 +487,12 @@ function daySection(number, day, open, before = null) {
   const list = node("ol", "stops");
   const contract = day.contract || {};
   const legs = ((_b2 = day.audit) == null ? void 0 : _b2.legs) || [];
+  if (!stops.length) {
+    summary.querySelector("small").textContent = "自由活动";
+    list.append(node("li", "free-day", "这一天不排景点，自由活动" + (contract.origin ? "（住" + contract.origin + "）" : "")));
+    details.append(summary, list);
+    return details;
+  }
   if (contract.origin && contract.origin !== ((_c2 = stops[0]) == null ? void 0 : _c2.place)) {
     const was = (_d2 = before == null ? void 0 : before.contract) == null ? void 0 : _d2.start;
     list.append(stopRow(
@@ -534,7 +540,7 @@ function daySection(number, day, open, before = null) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b2, _c2, _d2, _e2, _f2, _g2;
+  var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
@@ -566,12 +572,12 @@ function planCard(plan) {
       }
       if (!(contract == null ? void 0 : contract.destination)) continue;
       const limit = contract.end - (contract.buffer || 0);
-      summary.append(node("p", "", "预计 " + routeTime.arrival((_e2 = card2.audit) == null ? void 0 : _e2.arrival, limit) + " 到" + contract.destination + " · 最晚 " + routeTime.exact(limit)));
+      if ((_f2 = (_e2 = card2.audit) == null ? void 0 : _e2.stops) == null ? void 0 : _f2.length) summary.append(node("p", "", "预计 " + routeTime.arrival((_g2 = card2.audit) == null ? void 0 : _g2.arrival, limit) + " 到" + contract.destination + " · 最晚 " + routeTime.exact(limit)));
     }
     content.append(summary);
   }
   for (const [day, details] of Object.entries(plan.cards)) {
-    const before = ((_f2 = plan.changedDays) == null ? void 0 : _f2.includes(day)) ? (_g2 = plan.previous) == null ? void 0 : _g2[day] : null;
+    const before = ((_h2 = plan.changedDays) == null ? void 0 : _h2.includes(day)) ? (_i2 = plan.previous) == null ? void 0 : _i2[day] : null;
     const section = daySection(day, details, day === openDay, before);
     section.addEventListener("toggle", () => {
       if (section.isConnected && section.open) {
@@ -681,6 +687,7 @@ function tripText(plan) {
   return Object.keys(plan.cards).sort((a, b) => a - b).map((day) => {
     var _a2, _b2;
     const card = plan.cards[day], stops = ((_a2 = card.audit) == null ? void 0 : _a2.stops) || [];
+    if (!stops.length) return "第".concat(day, "天：自由活动");
     const back = ((_b2 = card.contract) == null ? void 0 : _b2.destination) ? "，约 ".concat(hm(card.audit.arrival), " 回到").concat(card.contract.destination) : "";
     return "第".concat(day, "天：") + stops.map((s) => "".concat(hm(s.start), " ").concat(s.place)).join(" → ") + back;
   }).join("\n") + "\n—— 武汉接线台 · 江豚接待员排程（时间为估算，出发前核实开放与预约）";
@@ -1064,6 +1071,54 @@ question.addEventListener("keydown", (event) => {
     sendText(question.value);
   }
 });
+const DEMO_ROUTE = ["古琴台", "龟山公园", "武汉长江大桥", "黄鹤楼", "户部巷", "楚河汉街", "东湖听涛"];
+function loadFlyover() {
+  if (window.Flyover) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const tag = document.createElement("script");
+    tag.src = "/web/flyover.js";
+    tag.onload = resolve;
+    tag.onerror = reject;
+    document.head.append(tag);
+  });
+}
+async function openFlyover(card, title) {
+  var _a2, _b2, _c2, _d2;
+  if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
+  const pt = (name) => routePoints == null ? void 0 : routePoints[name];
+  const stops = [];
+  if (card) {
+    const c = card.contract || {}, visits = ((_a2 = card.audit) == null ? void 0 : _a2.stops) || [], legs = ((_b2 = card.audit) == null ? void 0 : _b2.legs) || [];
+    if (c.origin && c.origin !== ((_c2 = visits[0]) == null ? void 0 : _c2.place) && pt(c.origin)) stops.push({ name: c.origin, label: "起", kicker: hm(c.start) + " 出发", detail: "", say: "从".concat(c.origin, "出发。") });
+    visits.forEach((s, i) => {
+      const leg = legs.find((l) => l.destination === s.place && l.origin !== l.destination);
+      const how = leg ? [modes[leg.mode], Number.isFinite(leg.minutes) ? "约 " + leg.minutes + " 分钟" : ""].filter(Boolean).join(" ") : "";
+      if (pt(s.place)) stops.push({ name: s.place, label: i + 1, kicker: "第 ".concat(i + 1, " 站 · ").concat(hm(s.start), "–").concat(hm(s.end)), detail: how ? how + "到这里" : "", say: "第".concat(i + 1, "站，").concat(s.place, "。") });
+    });
+    if (c.destination && c.destination !== ((_d2 = stops[stops.length - 1]) == null ? void 0 : _d2.name) && pt(c.destination)) stops.push({ name: c.destination, label: "终", kind: "end", kicker: "约 " + hm(card.audit.arrival) + " 到达", detail: "", say: "最后到".concat(c.destination, "。") });
+  } else {
+    DEMO_ROUTE.forEach((name, i) => pt(name) && stops.push({ name, label: i + 1, kicker: "第 ".concat(i + 1, " 站"), detail: "", say: "".concat(name, "。") }));
+  }
+  for (const s of stops) {
+    s.lat = pt(s.name).lat;
+    s.lon = pt(s.name).lon;
+  }
+  if (stops.length < 2) return;
+  try {
+    await loadFlyover();
+  } catch {
+    return;
+  }
+  const say = typeof Receptionist !== "undefined" && Receptionist.say ? (text) => Receptionist.say(text) : null;
+  window.Flyover.open({ stops, title, landmarks: typeof Landmarks !== "undefined" ? Landmarks.LIST : [], say });
+}
+(_h = get("fly-plan")) == null ? void 0 : _h.addEventListener("click", () => {
+  const plan = takeawayPlan();
+  if (!plan) return;
+  const day = plan.cards[openDay] ? openDay : Object.keys(plan.cards).sort((a, b) => a - b)[0];
+  openFlyover(plan.cards[day], "3D 飞览 · ".concat(plan.title || "行程", " 第 ").concat(day, " 天"));
+});
+(_i = get("fly-demo")) == null ? void 0 : _i.addEventListener("click", () => openFlyover(null, "3D 飞览武汉 · 经典一日"));
 const tourButton = get("judge-tour");
 if (tourButton) tourButton.addEventListener("click", async () => {
   if (state.pending || tourButton.disabled) return;
@@ -1083,6 +1138,8 @@ if (tourButton) tourButton.addEventListener("click", async () => {
     tourButton.disabled = false;
     tourButton.innerHTML = label;
   }
+  const plan = state.plans.find((p) => p.id === "current");
+  if (plan && !state.pending) openFlyover(plan.cards["1"], "3D 飞览 · 刚排好的第 1 天");
 });
 for (const starter of document.querySelectorAll(".starter")) {
   starter.addEventListener("click", () => {

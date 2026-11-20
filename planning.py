@@ -32,6 +32,7 @@ from datetime import date as _date
 from pathlib import Path as _Path
 # Opening hours and closed days from the official handbook (data/hours.json, each entry cites its page).
 HOURS = _json.loads((_Path(__file__).parent / "data" / "hours.json").read_text("utf8"))["places"]
+HOLIDAYS = set(_json.loads((_Path(__file__).parent / "data" / "holidays.json").read_text("utf8"))["dates"])
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 WEEKDAY_CN = dict(zip(WEEKDAYS, "一二三四五六日"))
 
@@ -41,20 +42,28 @@ def _hm(v):
     return int(h) * 60 + int(m)
 
 
-def window_of(c, n):
-    """Visit window: an explicit one from the visitor, else the official opening hours, else all day."""
-    if n in c["windows"]:
-        return c["windows"][n]
+def opening(n):
     h = HOURS.get(n)
     if h and not h.get("all_day") and h.get("open"):
         return [_hm(h["open"]), _hm(h["close"])]
     return [0, 1439]
 
 
+def window_of(c, n):
+    """Visit window: the visitor's own window intersected with the official opening hours."""
+    lo, hi = opening(n)
+    if n in c["windows"]:
+        a, b = c["windows"][n]
+        lo, hi = max(lo, a), min(hi, b)
+    return [lo, hi]
+
+
 def closed_on(c, n):
     """Weekday key if the place is (hard) closed on the contract's date, else None."""
     h, day = HOURS.get(n), c.get("date")
     if not h or not day or h.get("soft"):
+        return None
+    if h.get("holiday_open") and day in HOLIDAYS:
         return None
     wd = WEEKDAYS[_date.fromisoformat(day).weekday()]
     return wd if wd in h.get("closed", []) else None
@@ -137,8 +146,11 @@ def _evaluate(c, order, strict):
             violations.append(f"{n}周{WEEKDAY_CN[shut]}闭馆")
         start = max(t,window[0])
         last = HOURS.get(n,{}).get("last_entry")
-        if last and n not in c["windows"] and start > _hm(last):
-            violations.append(f"{n}{last}后停止入场")
+        if window[0] > window[1]:
+            h = HOURS[n]
+            violations.append(f"{n}开放时间为{h['open']}—{h['close']}，与要求的时段不重叠")
+        elif last and start > _hm(last):
+            violations.append(f"{n}{last}后{HOURS[n].get('entry_word','停止入场')}")
         finish = start+c["durations"].get(n,PLACES[n]["minutes"])
         if finish>window[1]:
             violations.append(f"{n}超出访问窗口")

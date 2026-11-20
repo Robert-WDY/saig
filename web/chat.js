@@ -465,6 +465,12 @@ function daySection(number, day, open, before = null) {
   const list = node("ol", "stops");
   const contract = day.contract || {};
   const legs = day.audit?.legs || [];
+  if (!stops.length) {
+    summary.querySelector("small").textContent = "自由活动";
+    list.append(node("li", "free-day", "这一天不排景点，自由活动" + (contract.origin ? "（住" + contract.origin + "）" : "")));
+    details.append(summary, list);
+    return details;
+  }
   if (contract.origin && contract.origin !== stops[0]?.place) {
     const was = before?.contract?.start;
     list.append(stopRow(contract.origin + "出发", routeTime.exact(contract.start), null, false, "",
@@ -523,7 +529,7 @@ function planCard(plan) {
       }
       if (!contract?.destination) continue;
       const limit = contract.end - (contract.buffer || 0);
-      summary.append(node("p", "", "预计 " + routeTime.arrival(card.audit?.arrival, limit) + " 到" + contract.destination + " · 最晚 " + routeTime.exact(limit)));
+      if (card.audit?.stops?.length) summary.append(node("p", "", "预计 " + routeTime.arrival(card.audit?.arrival, limit) + " 到" + contract.destination + " · 最晚 " + routeTime.exact(limit)));
     }
     content.append(summary);
   }
@@ -640,6 +646,7 @@ function takeawayPlan() {
 function tripText(plan) {
   return Object.keys(plan.cards).sort((a, b) => a - b).map(day => {
     const card = plan.cards[day], stops = card.audit?.stops || [];
+    if (!stops.length) return `第${day}天：自由活动`;
     const back = card.contract?.destination ? `，约 ${hm(card.audit.arrival)} 回到${card.contract.destination}` : "";
     return `第${day}天：` + stops.map(s => `${hm(s.start)} ${s.place}`).join(" → ") + back;
   }).join("\n") + "\n—— 武汉接线台 · 江豚接待员排程（时间为估算，出发前核实开放与预约）";
@@ -978,6 +985,45 @@ question.addEventListener("keydown", event => {
     sendText(question.value);
   }
 });
+// 3D flyover: loads three.js only when asked, then flies the open day's route (or a demo route).
+const DEMO_ROUTE = ["古琴台", "龟山公园", "武汉长江大桥", "黄鹤楼", "户部巷", "楚河汉街", "东湖听涛"];
+function loadFlyover() {
+  if (window.Flyover) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const tag = document.createElement("script");
+    tag.src = "/web/flyover.js"; tag.onload = resolve; tag.onerror = reject; document.head.append(tag);
+  });
+}
+async function openFlyover(card, title) {
+  if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
+  const pt = name => routePoints?.[name];
+  const stops = [];
+  if (card) {
+    const c = card.contract || {}, visits = card.audit?.stops || [], legs = card.audit?.legs || [];
+    if (c.origin && c.origin !== visits[0]?.place && pt(c.origin)) stops.push({name: c.origin, label: "起", kicker: hm(c.start) + " 出发", detail: "", say: `从${c.origin}出发。`});
+    visits.forEach((s, i) => {
+      const leg = legs.find(l => l.destination === s.place && l.origin !== l.destination);
+      const how = leg ? [modes[leg.mode], Number.isFinite(leg.minutes) ? "约 " + leg.minutes + " 分钟" : ""].filter(Boolean).join(" ") : "";
+      if (pt(s.place)) stops.push({name: s.place, label: i + 1, kicker: `第 ${i + 1} 站 · ${hm(s.start)}–${hm(s.end)}`, detail: how ? how + "到这里" : "", say: `第${i + 1}站，${s.place}。`});
+    });
+    if (c.destination && c.destination !== stops[stops.length - 1]?.name && pt(c.destination)) stops.push({name: c.destination, label: "终", kind: "end", kicker: "约 " + hm(card.audit.arrival) + " 到达", detail: "", say: `最后到${c.destination}。`});
+  } else {
+    DEMO_ROUTE.forEach((name, i) => pt(name) && stops.push({name, label: i + 1, kicker: `第 ${i + 1} 站`, detail: "", say: `${name}。`}));
+  }
+  for (const s of stops) { s.lat = pt(s.name).lat; s.lon = pt(s.name).lon; }
+  if (stops.length < 2) return;
+  try { await loadFlyover(); } catch { return; }
+  const say = typeof Receptionist !== "undefined" && Receptionist.say ? text => Receptionist.say(text) : null;
+  window.Flyover.open({stops, title, landmarks: typeof Landmarks !== "undefined" ? Landmarks.LIST : [], say});
+}
+get("fly-plan")?.addEventListener("click", () => {
+  const plan = takeawayPlan();
+  if (!plan) return;
+  const day = plan.cards[openDay] ? openDay : Object.keys(plan.cards).sort((a, b) => a - b)[0];
+  openFlyover(plan.cards[day], `3D 飞览 · ${plan.title || "行程"} 第 ${day} 天`);
+});
+get("fly-demo")?.addEventListener("click", () => openFlyover(null, "3D 飞览武汉 · 经典一日"));
+
 // Judge quick tour: the four contest functions plus one change of plan, sent one after another.
 const tourButton = get("judge-tour");
 if (tourButton) tourButton.addEventListener("click", async () => {
@@ -998,6 +1044,8 @@ if (tourButton) tourButton.addEventListener("click", async () => {
     tourButton.disabled = false;
     tourButton.innerHTML = label;
   }
+  const plan = state.plans.find(p => p.id === "current");
+  if (plan && !state.pending) openFlyover(plan.cards["1"], "3D 飞览 · 刚排好的第 1 天");
 });
 for (const starter of document.querySelectorAll(".starter")) {
   starter.addEventListener("click", () => {
