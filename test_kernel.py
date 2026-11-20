@@ -182,3 +182,25 @@ class VisitorToolsTests(KernelTests):
         with patch("kernel_tools.forecast", return_value=fake):
             r = box.call("get_weather", {"days": 2})
         self.assertEqual(len(r["days"]), 2)
+
+
+class MoveStopTests(KernelTests):
+    def test_move_stop_to_afternoon_keeps_every_other_stop(self):
+        draft = {"days": {}}
+        box = Toolbox(self.agent, draft, [])
+        must = [{"place": p} for p in ["古琴台", "龟山公园", "黄鹤楼", "武汉长江大桥", "户部巷"]]
+        self.assertTrue(box.call("plan_trip", {"days": 1, "must": must})["ok"])
+        before = list(draft["days"]["1"]["order"])
+        r = box.call("edit_trip", {"day": 1, "actions": [{"type": "move_stop", "place": "黄鹤楼", "period": "afternoon"}]})
+        self.assertTrue(r["ok"], r)
+        stops = {s["place"]: s["start"] for s in draft["days"]["1"]["audit"]["stops"]}
+        self.assertGreaterEqual(stops["黄鹤楼"], 13 * 60)
+        self.assertEqual(sorted(stops), sorted(before))
+        self.assertEqual(draft["days"]["1"]["contract"]["start"], 9 * 60)
+
+    def test_remove_and_readd_same_place_is_not_a_conflict(self):
+        draft = {"days": {}}
+        box = Toolbox(self.agent, draft, [])
+        box.call("plan_trip", {"days": 1, "must": [{"place": "黄鹤楼"}, {"place": "户部巷"}]})
+        r = box.call("edit_trip", {"day": 1, "actions": [{"type": "remove_stop", "place": "黄鹤楼"}, {"type": "add_stop", "place": "黄鹤楼"}]})
+        self.assertTrue(r["ok"], r)

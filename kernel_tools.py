@@ -68,10 +68,22 @@ def _metro(name):
     return {"station": station + "站", "lines": lines}
 
 
+# Windows bound when a stop is visited (start no earlier than, finish no later than), in minutes.
+PERIODS = {"morning": [0, 12 * 60 + 30], "afternoon": [13 * 60, 23 * 60 + 59], "evening": [17 * 60, 23 * 60 + 59]}
 GATEWAYS = {"天河机场": "天河机场", "汉口站": "汉口火车站", "武汉站": "武汉火车站", "武昌站": "武昌火车站"}
 # Official community material: the 智民里 venue is by 江汉路站 (lines 2/6) and 大智路站 (lines 1/6).
 VENUE_STATIONS = {"智民里": "江汉路", "数命SPU社区": "江汉路"}
 METRO_STATIONS = {s for stops in snapshot("metro_lines.json")["lines"].values() for s in stops}
+
+
+def idle_gaps(card, least=30):
+    """Free time the scheduler left before a stop (e.g. waiting for a moved stop's window)."""
+    stops, out = card["audit"]["stops"], []
+    for prev, stop in zip(stops, stops[1:]):
+        arrive = prev["end"] + (stop.get("leg") or 0)
+        if stop["start"] - arrive >= least:
+            out.append(f"{hhmm(arrive)}–{hhmm(stop['start'])} 到{stop['place']}之前空出约 {stop['start'] - arrive} 分钟")
+    return out
 
 
 def day_lines(days):
@@ -127,14 +139,15 @@ SCHEMAS = {
             "pace": {"type": "string", "enum": ["normal", "relaxed"], "description": "relaxed：老人小孩、怕累，少站少走"},
             "max_walk_m": {"type": "integer", "minimum": 200, "maximum": 5000, "description": "每段步行上限（米），只在游客明确提出时填"}}}},
     "edit_trip": {
-        "description": "修改已有行程的某一天：推迟/提前出发、改起止时间、删站、加站、换站。未提到的站点保留。排不下时会返回真实冲突，如实告诉游客并给出选项。",
+        "description": "修改已有行程的某一天：推迟/提前出发、改起止时间、删站、加站、换站，或把某一站挪到上午/下午/傍晚/指定时间之后（move_stop，其余站点保留、自动重排顺序）。游客说「X 不想早上去，换到下午」用 move_stop，不要改出发时间。未提到的站点保留。排不下时会返回真实冲突，如实告诉游客并给出选项。",
         "parameters": {"type": "object", "additionalProperties": False, "required": ["day", "actions"], "properties": {
             "day": {"type": "integer", "minimum": 1, "maximum": 5},
             "actions": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"type": "object", "additionalProperties": False,
                         "required": ["type"], "properties": {
-                            "type": {"type": "string", "enum": ["delay_start", "advance_start", "set_start", "set_end", "remove_stop", "add_stop", "replace_stop"]},
+                            "type": {"type": "string", "enum": ["delay_start", "advance_start", "set_start", "set_end", "remove_stop", "add_stop", "replace_stop", "move_stop"]},
+                            "period": {"type": "string", "enum": ["morning", "afternoon", "evening"], "description": "move_stop 用：挪到上午 / 下午 / 傍晚"},
                             "minutes": {"type": "integer", "minimum": 5, "maximum": 480},
-                            "time": {"type": "string"},
+                            "time": {"type": "string", "description": "HH:MM；move_stop 时表示最早几点开始这一站"},
                             "place": {"type": "string"},
                             "with_place": {"type": "string"}}}}}}},
     "multi_plan": {
@@ -335,7 +348,7 @@ class Toolbox:
         keep = list(old["order"])
         op = {"day": day, "query": "", "set": {}, "mobility": deepcopy(c.get("mobility") or {"rules": []}),
               "avoid": sorted({n for k, v in days.items() if k != key for n in v["order"]})}
-        added, removed = [], []
+        added, removed, moved = [], [], []
         for a in actions:
             t = a["type"]
             if t in ("delay_start", "advance_start"):
@@ -353,11 +366,27 @@ class Toolbox:
                 p = self._place(a.get("place", ""))
                 if p not in keep:
                     keep.append(p); added.append(p)
+            elif t == "move_stop":
+                p = self._place(a.get("place", ""))
+                if p not in keep:
+                    raise Invalid(f"第{day}天没有「{p}」。当天站点：{'、'.join(keep)}")
+                if a.get("time"):
+                    window = [_clock(a["time"]), 1439]
+                else:
+                    window = PERIODS.get(a.get("period"))
+                    if not window:
+                        raise Invalid("move_stop 需要 period（morning/afternoon/evening）或 time")
+                op["set"].setdefault("windows", {})[p] = [hhmm(window[0]), hhmm(window[1])]
+                moved.append(p)
             elif t == "replace_stop":
                 p, q = self._place(a.get("place", "")), self._place(a.get("with_place", ""))
                 if p not in keep:
                     raise Invalid(f"第{day}天没有「{p}」。当天站点：{'、'.join(keep)}")
                 keep[keep.index(p)] = q; removed.append(p); added.append(q)
+        # Removing and re-adding the same place in one edit means "keep it" (the model's way to move a stop).
+        both = set(removed) & set(added)
+        removed = [p for p in removed if p not in both]
+        added = [p for p in added if p not in both]
         if removed:
             op["remove"] = removed
             op["unrequire"] = [p for p in removed if p in c.get("must", [])]
@@ -371,8 +400,13 @@ class Toolbox:
                     "hint": "行程保持原样。若游客已表示想轻松、少走或晚出发，直接再调用一次 edit_trip，多删一个离路线最远的站后重试，然后在回答里说明多删了哪站；只有游客明确要保留全部站点时，才把选择题交给游客。回答要完整，不要中途截断。"}
         new = {**days, key: card}
         self._commit(new, "edit")
-        return {"ok": True, "summary_lines": day_lines({key: card}), "diff": card.get("diff"),
-                "reminder": "回答时逐字给出这一天的新安排（以「第N天：」开头），并说明改了什么。"}
+        out = {"ok": True, "summary_lines": day_lines({key: card}), "diff": card.get("diff"),
+               "reminder": "回答时逐字给出这一天的新安排（以「第N天：」开头），一句话说明改了什么。"}
+        gaps = idle_gaps(card)
+        if gaps:
+            out["free_time"] = gaps
+            out["reminder"] += "free_time 是空出来的时间，顺口建议怎么用（如午饭、喝茶、附近逛逛）。"
+        return out
 
     def multi_plan(self, request):
         # Alternatives and comparisons keep the reviewed multi-deliverable planner.
