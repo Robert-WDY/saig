@@ -50,7 +50,7 @@ def apply_constraints(old, op):
     c={**new_contract(),**deepcopy(old)}
     if "mobility" in op:c["mobility"]=deepcopy(op["mobility"])
     changes=op.get("set",{})
-    if not isinstance(changes,dict) or set(changes)-{"start","end","origin","destination","buffer","durations","windows","regions","max_stops","max_minutes"}:
+    if not isinstance(changes,dict) or set(changes)-{"start","end","origin","destination","buffer","durations","windows","regions","max_stops","max_minutes","date"}:
         raise Invalid("存在无法审核的约束字段")
     def clock(v):
         if isinstance(v,str):
@@ -231,6 +231,13 @@ class Agent:
         prior=old["order"] if old else []
         trace.append({"step":"frozen_day","day":key,"before":old["contract"] if old else None,
                       "constraints":deepcopy(c),"prior_stops":list(prior)})
+        from planning import closed_on, WEEKDAY_CN
+        shut=[(n,closed_on(c,n)) for n in dict.fromkeys(c["must"]+list(op.get("require",[]))+list(op.get("add",[])))]
+        shut=[(n,d) for n,d in shut if d]
+        if shut:
+            detail="、".join(f"{n}周{WEEKDAY_CN[d]}闭馆" for n,d in shut)+f"（第{key}天是 {c['date']}）。可以把它挪到别的日子，或换一天出发。"
+            trace.append({"day":key,"audit_error":detail})
+            raise Invalid(detail)
         available=min(c["end"]-c["start"],c["max_minutes"])-c["buffer"]
         required=sum(c["durations"].get(n,PLACES[n]["minutes"]) for n in set(c["must"])|set(op.get("add",[])))
         if required>available:

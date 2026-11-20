@@ -1,0 +1,26 @@
+{
+  "source": "武汉旅游产品手册（官方），逐条摘自对应页；冬季或节假日可能调整，以场馆公告为准",
+  "checked": "2026-11-20",
+  "places": {
+    "黄鹤楼": {"open": "08:30", "close": "18:00", "last_entry": "17:00", "closed": [], "ref": "book.7.1", "entry_word": "停止售票", "note": "冬季开放时间可能调整"},
+    "湖北省博物馆": {"open": "09:00", "close": "17:00", "last_entry": "16:00", "closed": ["mon"], "booking": true, "ref": "book.16.1"},
+    "江汉关": {"open": "09:00", "close": "17:00", "last_entry": "16:00", "closed": ["mon"], "booking": true, "soft": true, "ref": "book.19.1", "note": "指江汉关博物馆入馆参观；大楼外观随时可看"},
+    "武汉美术馆": {"open": "09:00", "close": "17:00", "last_entry": "16:00", "closed": ["mon"], "booking": true, "ref": "book.23.1"},
+    "武汉博物馆": {"open": "09:00", "close": "17:00", "last_entry": "16:30", "closed": ["tue"], "ref": "book.18.2"},
+    "辛亥革命博物馆": {"open": "09:00", "close": "17:00", "last_entry": "16:00", "closed": ["mon"], "ref": "book.90.1", "note": "南区（辛亥革命博物馆）周一闭馆，北区（红楼）周二闭馆"},
+    "八七会议会址": {"open": "09:00", "close": "17:00", "closed": ["fri"], "ref": "book.191.2"},
+    "中共中央机关旧址": {"open": "09:00", "close": "17:00", "closed": ["mon"], "ref": "book.191.2"},
+    "龟山公园": {"open": "06:00", "close": "22:00", "closed": [], "ref": "book.82.1", "note": "龟山电视塔 09:00—17:30"},
+    "中山公园": {"open": "06:00", "close": "22:00", "closed": [], "ref": "book.56.1"},
+    "武汉植物园": {"open": "08:00", "close": "17:00", "closed": [], "ref": "book.143.1"},
+    "清凉寨": {"open": "08:00", "close": "17:30", "last_entry": "16:30", "closed": [], "ref": "book.48.1"},
+    "九真山": {"open": "08:00", "close": "17:30", "closed": [], "ref": "book.118.1"},
+    "大余湾": {"open": "08:00", "close": "17:30", "closed": [], "ref": "book.114.1"},
+    "木兰胜天": {"open": "08:30", "close": "17:30", "closed": [], "ref": "book.116.1"},
+    "姚家山风景区": {"open": "09:00", "close": "17:00", "last_entry": "16:30", "closed": ["mon"], "soft": true, "ref": "book.94.1", "note": "周一闭馆指新四军五师机关旧址纪念馆"},
+    "昙华林": {"all_day": true, "ref": "book.77.1"},
+    "斗级营": {"all_day": true, "ref": "book.78.1"},
+    "黎黄陂路": {"all_day": true, "ref": "book.76.1"},
+    "楚河汉街": {"all_day": true, "ref": "book.78.1"}
+  }
+}

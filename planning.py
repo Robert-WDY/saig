@@ -27,9 +27,47 @@ def minutes(value, maximum=1439):
     return value
 
 
+import json as _json
+from datetime import date as _date
+from pathlib import Path as _Path
+# Opening hours and closed days from the official handbook (data/hours.json, each entry cites its page).
+HOURS = _json.loads((_Path(__file__).parent / "data" / "hours.json").read_text("utf8"))["places"]
+WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+WEEKDAY_CN = dict(zip(WEEKDAYS, "一二三四五六日"))
+
+
+def _hm(v):
+    h, m = v.split(":")
+    return int(h) * 60 + int(m)
+
+
+def window_of(c, n):
+    """Visit window: an explicit one from the visitor, else the official opening hours, else all day."""
+    if n in c["windows"]:
+        return c["windows"][n]
+    h = HOURS.get(n)
+    if h and not h.get("all_day") and h.get("open"):
+        return [_hm(h["open"]), _hm(h["close"])]
+    return [0, 1439]
+
+
+def closed_on(c, n):
+    """Weekday key if the place is (hard) closed on the contract's date, else None."""
+    h, day = HOURS.get(n), c.get("date")
+    if not h or not day or h.get("soft"):
+        return None
+    wd = WEEKDAYS[_date.fromisoformat(day).weekday()]
+    return wd if wd in h.get("closed", []) else None
+
+
 def validate(c):
-    if set(c)-{"mobility"}!=FIELDS:
+    if set(c)-{"mobility","date"}!=FIELDS:
         raise Invalid("未知或缺失行程约束")
+    if c.get("date") is not None:
+        try:
+            _date.fromisoformat(c["date"])
+        except (TypeError, ValueError) as exc:
+            raise Invalid("日期格式应为 YYYY-MM-DD") from exc
     if "mobility" in c:
         try:
             settings(c["mobility"])
@@ -93,8 +131,14 @@ def _evaluate(c, order, strict):
     for n in order:
         leg = travel(previous,n,t)
         t += leg
-        window = c["windows"].get(n,[0,1439])
+        window = window_of(c,n)
+        shut = closed_on(c,n)
+        if shut:
+            violations.append(f"{n}周{WEEKDAY_CN[shut]}闭馆")
         start = max(t,window[0])
+        last = HOURS.get(n,{}).get("last_entry")
+        if last and n not in c["windows"] and start > _hm(last):
+            violations.append(f"{n}{last}后停止入场")
         finish = start+c["durations"].get(n,PLACES[n]["minutes"])
         if finish>window[1]:
             violations.append(f"{n}超出访问窗口")
@@ -172,7 +216,8 @@ def reorder(c, stops, candidates=15):
             moving += _rough_minutes(prev, n)
             t += _rough_minutes(prev, n)
             km += straight_km(prev, n) or 0 if prev else 0
-            lo, hi = c["windows"].get(n, [0, 1439])
+            lo, hi = window_of(c, n)
+            late = late or bool(closed_on(c, n))
             if t < lo:
                 idle += lo - t
                 t = lo

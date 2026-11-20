@@ -214,3 +214,36 @@ class ReorderTests(unittest.TestCase):
         order, proof = reorder(c, ["古琴台", "龟山公园", "武汉长江大桥", "黄鹤楼", "户部巷"])
         self.assertEqual(order, ["古琴台", "龟山公园", "武汉长江大桥", "户部巷", "黄鹤楼"])
         self.assertFalse(proof["violations"])
+
+
+class HoursMealsCrossDayTests(KernelTests):
+    def test_closed_day_blocks_a_must_visit_and_open_day_plans_it(self):
+        box = Toolbox(self.agent, {"days": {}}, [])
+        monday = box.call("plan_trip", {"days": 1, "start_date": "2026-11-23", "must": [{"place": "湖北省博物馆"}]})
+        self.assertFalse(monday["ok"])
+        self.assertIn("周一闭馆", monday["error"])
+        tuesday = box.call("plan_trip", {"days": 1, "start_date": "2026-11-24", "must": [{"place": "湖北省博物馆"}]})
+        self.assertTrue(tuesday["ok"], tuesday)
+        self.assertTrue(any("需提前预约" in n for n in tuesday["opening_notes"]))
+
+    def test_new_plan_spanning_noon_gets_lunch(self):
+        from kernel_tools import lunch_stop
+        draft = {"days": {}}
+        box = Toolbox(self.agent, draft, [])
+        r = box.call("plan_trip", {"days": 1, "must": [{"place": "湖北省博物馆"}, {"place": "黄鹤楼"}]})
+        self.assertTrue(r["ok"], r)
+        self.assertIsNotNone(lunch_stop(draft["days"]["1"]))
+
+    def test_move_to_day_and_swap(self):
+        draft = {"days": {}}
+        box = Toolbox(self.agent, draft, [])
+        box.call("plan_trip", {"days": 2, "must": [{"place": "黄鹤楼", "day": 1}, {"place": "古琴台", "day": 2}]})
+        r = box.call("edit_trip", {"day": 1, "actions": [{"type": "move_to_day", "place": "黄鹤楼", "to_day": 2}]})
+        self.assertTrue(r["ok"], r)
+        self.assertNotIn("黄鹤楼", draft["days"]["1"]["order"])
+        self.assertIn("黄鹤楼", draft["days"]["2"]["order"])
+        before = (list(draft["days"]["1"]["order"]), list(draft["days"]["2"]["order"]))
+        r = box.call("edit_trip", {"day": 1, "actions": [{"type": "swap_days", "to_day": 2}]})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(sorted(draft["days"]["1"]["order"]), sorted(before[1]))
+        self.assertEqual(sorted(draft["days"]["2"]["order"]), sorted(before[0]))
