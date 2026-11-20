@@ -386,3 +386,6 @@ dialog::backdrop { background: #15262188; }
 .info-card, .sources, .footnote, .plan-summary .delivery, .answer-detail { transition: opacity .35s ease, transform .35s ease; }
 @media (max-width: 720px) { .timeline li { grid-template-columns: 78px 1fr; } .venue-card { grid-template-columns: 56px 1fr; } .venue-pin { height: 56px; } }
 .stop-icon { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; vertical-align: -6px; border-radius: 50%; background: var(--card); border: 1.5px solid var(--accent-dark); font-style: normal; }
+.work-steps li.failed { opacity: .8; color: #8a4b21; }
+.work-steps li.failed::before { border-color: #b2644c; background: #fbede6; }
+.live-text { margin-top: 8px; white-space: pre-wrap; font-size: 14px; line-height: 1.75; color: var(--ink); max-width: 640px; }

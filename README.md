@@ -4,6 +4,15 @@
 
 [观看 2 分钟演示片](https://robert-wdy.github.io/saig/) · [原画质下载](https://github.com/Robert-WDY/saig/releases/tag/promo-v1) · [报名项目简介](docs/release/报名材料.md) · [发布验收](docs/release/发布验收.md)
 
+## 接待内核（v2，工具调用式）
+
+参照 ChorifyCore 的单一决策循环（`kernel.py`）：模型看到工具清单、接待方法索引（`skills/*.md`）与会话记忆，自己决定调用哪个工具，程序执行后把真实结果交回，直到给出回答；没有关键词路由。
+
+- 工具（`kernel_tools.py`，参数经 JSON Schema 校验）：`search_knowledge` / `read_source`（官方资料检索与原文）、`find_place`（地点与地铁，支持「光谷」「省博」等俗称）、`get_trip` / `plan_trip` / `edit_trip`（行程时间全部来自确定性排程器）、`multi_plan`（多套方案与比较）、`remember`（本会话记忆）、`read_skill`。
+- 规则：每轮最多 6 步，只读工具可并行，写操作一步一个；回答中的 [S#] 引用只保留本轮真实检索到的资料；未检索就给出长篇事实回答会被打回重查一次。
+- 记忆：最近 8 轮原文、已记住的游客信息、当前行程、更早话题摘要。
+- `/chat/stream` 以 SSE 推送真实步骤与逐字回复；`SAIG_KERNEL=v1` 可回退到旧流水线。
+
 ## 本机运行
 
 需要 Python 3.11。源码附带已构建的浏览器脚本；更新前端源码后运行 `npm ci` 和 `npm run build`。从官方素材包生成手册索引：

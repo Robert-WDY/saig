@@ -100,6 +100,7 @@ class ReleaseTests(unittest.TestCase):
         result=_verify_statement(model,"地址","地点在哪",[{"id":"a","text":"这个场馆位于智民里"}])
         self.assertFalse(result["supported"])
 
+    @patch.dict("os.environ",{"SAIG_KERNEL":"v1"})  # boundary test drives the mocked Agent.respond directly
     def test_public_http_boundary_errors_and_delete(self):
         agent=Mock()
         agent.store=self.store

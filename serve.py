@@ -24,6 +24,7 @@ from copy import copy
 from storage import Conflict
 from diagnostics import capture,timed
 from transport import snapshot
+from kernel import Kernel
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 WEB_ASSETS = {
@@ -126,6 +127,14 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
             if len(session_locks)>4096:
                 for k in [k for k,l in session_locks.items() if not l.locked()]:del session_locks[k]
             return session_locks.setdefault(key,Lock())
+    kernels = {}
+    def kernel_for(current):
+        # The tool-calling kernel (v2) wraps the current Agent; SAIG_KERNEL=v1 falls back to the old pipeline.
+        if os.getenv("SAIG_KERNEL","v2")=="v1":return current
+        if id(current) not in kernels:
+            kernels.clear()
+            kernels[id(current)]=Kernel(current)
+        return kernels[id(current)]
     probe_lock = Lock()
     probe = {"next":0, "ok":False}
 
@@ -212,7 +221,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
 
         def do_POST(self):
             if not self.allowed(True):return
-            if self.path not in ("/chat","/route-edit","/session/delete","/tool","/rag") or (invite and self.path in ("/tool","/rag")):
+            if self.path not in ("/chat","/chat/stream","/route-edit","/session/delete","/tool","/rag") or (invite and self.path in ("/tool","/rag")):
                 return self.send_json(404,{"error":"未知入口"})
             if self.headers.get_content_type()!="application/json":
                 return self.send_json(415,{"error":"需要 application/json"})
@@ -259,10 +268,36 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                             raise
                         except ValueError as exc:
                             return self.send_json(422,{"error":str(exc)})
+                    elif self.path=="/chat/stream":
+                        # Server-sent events: real steps (tool started/finished) and the reply as it is written.
+                        self.send_response(200)
+                        self.send_header("Content-Type","text/event-stream; charset=utf-8")
+                        self.send_header("Cache-Control","no-store")
+                        self.send_header("X-Accel-Buffering","no")
+                        self.end_headers()
+                        def emit(kind,data):
+                            self.wfile.write(f"event: {kind}\ndata: {json.dumps(data,ensure_ascii=False)}\n\n".encode())
+                            self.wfile.flush()
+                        try:
+                            result={**kernel_for(current).respond(internal,q,req,emit=emit),"session":sid,"request_id":req}
+                            result["topics"]=reply_topics(result)
+                            if invite:
+                                result.pop("trace",None)
+                                result.pop("facts",None)
+                            emit("result",result)
+                        except CapacityError as exc:emit("error",{"status":429,"error":str(exc)})
+                        except Conflict as exc:emit("error",{"status":409,"error":str(exc)})
+                        except TurnExpired as exc:emit("error",{"status":504,"error":str(exc)})
+                        except (requests.RequestException,ModelError):emit("error",{"status":503,"error":"模型或外部服务暂不可用，请稍后重试。"})
+                        except (BrokenPipeError, ConnectionResetError):raise
+                        except Exception as exc:
+                            self.log_error("internal error %s",type(exc).__name__)
+                            emit("error",{"status":500,"error":"接待服务发生内部错误，请稍后重试。"})
+                        return
                     elif self.path=="/chat":
                         debug=not invite and body.get("diagnostics") is True
                         with capture(debug) as events,timed("chat"):
-                            result={**current.respond(internal,q,req),"session":sid,"request_id":req}
+                            result={**kernel_for(current).respond(internal,q,req),"session":sid,"request_id":req}
                         if debug:result["events"]=events
                         result["topics"]=reply_topics(result)
                         if invite:

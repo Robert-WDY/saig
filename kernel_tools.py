@@ -1,0 +1,349 @@
+"""Tools for the receptionist kernel.
+
+Each tool has a JSON Schema that is checked before it runs; a bad call gets a precise error back
+instead of an exception. Read tools never change the session; write tools (plan_trip, edit_trip,
+remember) change exactly the session draft they were given. Trip times always come from the
+deterministic scheduler (Agent.day), never from the model.
+"""
+import json
+import re
+from copy import deepcopy
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+
+from knowledge import TOOLS as TOPICS
+from places import PLACES, ATLAS
+from planning import Invalid
+from trip_contract import GUIDES, trip_review
+from transport import ACCESS, snapshot
+
+SKILL_DIR = Path(__file__).parent / "skills"
+WRITE_TOOLS = {"plan_trip", "edit_trip", "remember", "multi_plan"}
+
+# Everyday names visitors use for catalogue places.
+ALIASES = {
+    "光谷": "光谷广场", "武大": "武汉大学", "华科": "华中科技大学", "华中大": "华中科技大学", "华师": "华中师范大学",
+    "省博": "湖北省博物馆", "省博物馆": "湖北省博物馆", "湖北博物馆": "湖北省博物馆", "东湖": "东湖听涛", "东湖绿道": "东湖绿道",
+    "江滩": "汉口江滩", "长江大桥": "武汉长江大桥", "大桥": "武汉长江大桥", "汉街": "楚河汉街", "楚河": "楚河汉街",
+    "吉庆街": "吉庆街", "黎黄陂": "黎黄陂路", "江汉关博物馆": "江汉关", "辛亥": "辛亥革命博物馆", "红楼": "辛亥革命博物馆",
+    "汉口火车站": "汉口站", "汉口高铁站": "汉口站", "社区": "智民里", "数命社区": "智民里", "spu社区": "智民里", "会场": "智民里",
+    "古琴台": "古琴台", "龟山": "龟山公园", "晴川阁": "晴川阁", "昙华林": "昙华林", "户部巷": "户部巷",
+}
+
+
+def _clock(value):
+    if not isinstance(value, str) or not re.fullmatch(r"(?:[01]?\d|2[0-3]):[0-5]\d", value.strip()):
+        raise Invalid(f"时间格式应为 HH:MM，收到 {value!r}")
+    h, m = map(int, value.strip().split(":"))
+    return h * 60 + m
+
+
+def hhmm(t):
+    return f"{t // 60:02d}:{t % 60:02d}"
+
+
+def resolve(name):
+    """Map a visitor's place name onto the plannable catalogue, or explain what is close."""
+    raw = (name or "").strip()
+    key = raw.lower().replace(" ", "")
+    if raw in PLACES:
+        return raw, []
+    if key in ALIASES and ALIASES[key] in PLACES:
+        return ALIASES[key], []
+    hits = [n for n in PLACES if raw and (raw in n or n in raw)]
+    if len(hits) == 1:
+        return hits[0], []
+    if not hits:
+        hits = sorted(PLACES, key=lambda n: -len(set(n) & set(raw)))[:4] if raw else []
+    return None, hits[:5]
+
+
+def _metro(name):
+    station = ACCESS.get(name)
+    if not station:
+        return None
+    lines = [line for line, stops in snapshot("metro_lines.json")["lines"].items() if station in stops]
+    return {"station": station + "站", "lines": lines}
+
+
+def day_lines(days):
+    out = []
+    for key in sorted(days, key=int):
+        card = days[key]
+        stops = " → ".join(f"{hhmm(s['start'])} {s['place']}" for s in card["audit"]["stops"])
+        c = card["contract"]
+        tail = f"（约 {hhmm(card['audit']['arrival'])} 到{c['destination']}）" if c.get("destination") else ""
+        out.append(f"第{key}天：{stops}{tail}")
+    return out
+
+
+SCHEMAS = {
+    "search_knowledge": {
+        "description": "检索官方资料（武汉旅游产品手册、武汉概览、数命SPU社区与SPU说明、SAIG赛事说明及核对过的官网要点）。回答任何关于武汉、景点美食、社区、SPU、SAIG 的事实前都要先检索，并在回答中用 [S编号] 引用。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["query"], "properties": {
+            "query": {"type": "string", "minLength": 1, "maxLength": 120, "description": "简短的检索词，2–12 个字，例如「热干面 哪里吃」「SAIG 报名 材料」"},
+            "topic": {"type": "string", "enum": ["wuhan", "attraction", "food", "guide", "community", "spu", "saig", "any"],
+                      "description": "资料范围：wuhan 城市概况/历史，attraction 景点，food 美食，guide 游玩攻略，community 数命SPU社区，spu SPU 概念，saig 赛事，any 全部"},
+            "k": {"type": "integer", "minimum": 1, "maximum": 6}}}},
+    "read_source": {
+        "description": "读取某条检索结果的完整原文（检索结果只给摘录时使用）。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["ref"],
+                       "properties": {"ref": {"type": "string", "pattern": "^S\\d+$"}}}},
+    "find_place": {
+        "description": "查地点：是否可排进行程、所在片区、建议停留时长、最近地铁站和导航链接。游客说的名字不标准时（如「光谷」「省博」）也用它找到目录里的正式名称。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["name"],
+                       "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 40}}}},
+    "get_trip": {
+        "description": "读取本会话当前的正式行程（每天的站点、时间、起止点）。修改行程前、或游客问「我的行程」时使用。",
+        "parameters": {"type": "object", "additionalProperties": False, "properties": {}}},
+    "plan_trip": {
+        "description": "新建武汉行程（会替换当前行程）。时间、交通由排程器计算，回答时逐字使用返回的 summary_lines。不确定的条件用合理默认值，不要为此反复追问。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["days"], "properties": {
+            "days": {"type": "integer", "minimum": 1, "maximum": 5},
+            "start": {"type": "string", "description": "每天出发时间 HH:MM，默认 09:00；只玩下午就填 13:00 等"},
+            "end": {"type": "string", "description": "每天最晚结束时间 HH:MM，默认 18:00"},
+            "stay": {"type": "string", "description": "住处或每天的出发/回程地点（地点名），没有就不填"},
+            "interests": {"type": "string", "maxLength": 80, "description": "兴趣或主题，如「老建筑 过早」「第一次来 经典」"},
+            "must": {"type": "array", "maxItems": 8, "items": {"type": "object", "additionalProperties": False, "required": ["place"],
+                     "properties": {"place": {"type": "string"}, "day": {"type": "integer", "minimum": 1, "maximum": 5}}}},
+            "avoid": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+            "pace": {"type": "string", "enum": ["normal", "relaxed"], "description": "relaxed：老人小孩、怕累，少站少走"},
+            "max_walk_m": {"type": "integer", "minimum": 200, "maximum": 5000, "description": "每段步行上限（米），只在游客明确提出时填"}}}},
+    "edit_trip": {
+        "description": "修改已有行程的某一天：推迟/提前出发、改起止时间、删站、加站、换站。未提到的站点保留。排不下时会返回真实冲突，如实告诉游客并给出选项。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["day", "actions"], "properties": {
+            "day": {"type": "integer", "minimum": 1, "maximum": 5},
+            "actions": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"type": "object", "additionalProperties": False,
+                        "required": ["type"], "properties": {
+                            "type": {"type": "string", "enum": ["delay_start", "advance_start", "set_start", "set_end", "remove_stop", "add_stop", "replace_stop"]},
+                            "minutes": {"type": "integer", "minimum": 5, "maximum": 480},
+                            "time": {"type": "string"},
+                            "place": {"type": "string"},
+                            "with_place": {"type": "string"}}}}}}},
+    "multi_plan": {
+        "description": "同时交付多套备选行程并比较（如「一份一日游和一份两日游，比较一下」），或修改、比较、选用已交付的备选方案时使用。把游客的原话完整传入；结果会显示在行程板的方案与比较页。普通的单套行程用 plan_trip。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["request"],
+                       "properties": {"request": {"type": "string", "minLength": 2, "maxLength": 600}}}},
+    "remember": {
+        "description": "记住游客在本次对话中明确说出的信息（称呼、住处、同行人、偏好、到达时间），之后的推荐与行程会参考。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["field", "value"], "properties": {
+            "field": {"type": "string", "enum": ["name", "stay", "companions", "preference", "arrival", "other"]},
+            "value": {"type": "string", "minLength": 1, "maxLength": 100}}}},
+    "read_skill": {
+        "description": "读取一份接待方法说明（索引见系统提示）。处理对应类型的请求前可以先读。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["id"],
+                       "properties": {"id": {"type": "string", "maxLength": 40}}}},
+}
+TOOL_DEFS = [{"type": "function", "function": {"name": n, "description": s["description"], "parameters": s["parameters"]}}
+             for n, s in SCHEMAS.items()]
+VALIDATORS = {n: Draft202012Validator(s["parameters"]) for n, s in SCHEMAS.items()}
+
+
+def skill_index():
+    rows = []
+    for path in sorted(SKILL_DIR.glob("*.md")):
+        head = path.read_text("utf8").split("\n", 3)
+        rows.append({"id": path.stem, "summary": head[1].strip("# ").strip() if len(head) > 1 else path.stem})
+    return rows
+
+
+class Toolbox:
+    def __init__(self, agent, draft, trace):
+        self.agent, self.draft, self.trace = agent, draft, trace
+        self.refs = {}
+        self.mode = None
+        self.deliverables = None
+
+    # ── dispatch ──────────────────────────────────────────────────────────
+    def call(self, name, args):
+        if name not in SCHEMAS:
+            return {"ok": False, "error": f"没有名为 {name} 的工具"}
+        error = next(VALIDATORS[name].iter_errors(args), None)
+        if error:
+            return {"ok": False, "error": f"参数不符合要求：{'.'.join(map(str, error.path)) or '参数'} {error.message}"}
+        try:
+            return getattr(self, name)(**args)
+        except Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+
+    # ── read tools ────────────────────────────────────────────────────────
+    def search_knowledge(self, query, topic="any", k=5):
+        cats = sorted({c for v in TOPICS.values() for c in v}) if topic == "any" else TOPICS[topic]
+        rows = self.agent.kb.search(query, cats, k)
+        # Reviewed official facts (deadlines, schedule, venue) ride along for their own topic.
+        curated = [d for d in self.agent.kb.curated if d["category"] in cats and d not in rows]
+        if topic in ("saig", "community", "spu"):
+            rows = rows + curated[:3]
+        out = []
+        for d in rows:
+            ref = next((r for r, doc in self.refs.items() if doc["id"] == d["id"]), None)
+            if not ref:
+                ref = f"S{len(self.refs) + 1}"
+                self.refs[ref] = d
+            out.append({"ref": ref, "title": d.get("title", ""), "locator": d.get("locator"), "text": d["text"][:520]})
+        self.trace.append({"tool": "wuhan" if topic in ("any", "wuhan") else topic, "query": query, "hits": [d["id"] for d in rows]})
+        return {"ok": True, "results": out, "note": "只依据这些结果回答，句末标用到的编号如 [S1]。结果里没有的内容（名称全称、数字、日期等）不要凭记忆补充，直说官方资料没有记载。"}
+
+    def read_source(self, ref):
+        doc = self.refs.get(ref)
+        if not doc:
+            return {"ok": False, "error": f"本轮没有检索到 {ref}"}
+        return {"ok": True, "ref": ref, "title": doc.get("title"), "text": doc["text"][:2500]}
+
+    def find_place(self, name):
+        hit, near = resolve(name)
+        names = [hit] if hit else near
+        found = []
+        for n in names[:5]:
+            p = PLACES[n]
+            found.append({"name": n, "plannable": bool(p.get("minutes")), "area": p.get("area"), "zone": p.get("zone"),
+                          "suggested_minutes": p.get("minutes"), "metro": _metro(n),
+                          "map_url": "https://uri.amap.com/search?keyword=" + n + "&city=武汉"})
+        if not found:
+            atlas = [r for r in ATLAS if name in r["name"]][:3]
+            found = [{"name": r["name"], "plannable": False, "area": r.get("district"), "note": "在地图目录中，可浏览，暂不能自动排程"} for r in atlas]
+        self.trace.append({"tool": "location", "query": name, "result": [f["name"] for f in found]})
+        return {"ok": True, "exact": bool(hit), "places": found}
+
+    def get_trip(self):
+        days = self.draft.get("days") or {}
+        if not days:
+            return {"ok": True, "has_trip": False, "note": "当前还没有行程。"}
+        return {"ok": True, "has_trip": True, "summary_lines": day_lines(days),
+                "days": {k: {"start": hhmm(c["contract"]["start"]), "end": hhmm(c["contract"]["end"]),
+                             "origin": c["contract"].get("origin"), "stops": c["order"]} for k, c in days.items()}}
+
+    def read_skill(self, id):
+        path = SKILL_DIR / f"{re.sub(r'[^a-z0-9-]', '', id)}.md"
+        if not path.exists():
+            return {"ok": False, "error": "没有这份方法说明", "available": [s["id"] for s in skill_index()]}
+        return {"ok": True, "id": path.stem, "text": path.read_text("utf8")[:4000]}
+
+    # ── write tools ───────────────────────────────────────────────────────
+    def _place(self, name):
+        hit, near = resolve(name)
+        if not hit:
+            raise Invalid(f"「{name}」不在可排程的地点目录里。相近的有：{'、'.join(near) or '无'}。请换成目录里的地点，或先用 find_place 查。")
+        return hit
+
+    def _commit(self, days, mode):
+        if self.draft.get("days"):
+            self.draft["past_days"] = (self.draft.get("past_days", []) + [deepcopy(self.draft["days"])])[-8:]
+        self.draft.setdefault("first_days", deepcopy(self.draft.get("days") or days))
+        self.draft["days"] = days
+        self.draft.pop("pending_days", None)
+        self.mode = mode
+
+    def plan_trip(self, days, start="09:00", end="18:00", stay=None, interests="", must=(), avoid=(), pace="normal", max_walk_m=None):
+        s, e = _clock(start), _clock(end)
+        if e - s < 120:
+            raise Invalid("每天可用时间不足 2 小时，无法排程，请放宽结束时间或提前出发。")
+        home = self._place(stay) if stay else None
+        wanted = [(self._place(m["place"]), m.get("day")) for m in must]
+        banned = [self._place(a) for a in avoid]
+        rules = []
+        if max_walk_m:
+            rules.append({"field": "单段步行上限米", "subject": "", "value": max_walk_m, "quote": f"每段步行不超过{max_walk_m}米"})
+        mobility = {"rules": rules, "default_preference": "less_walk" if pace == "relaxed" else "fastest"}
+        template = None
+        # Multi-day trips without must-visits follow the handbook's own day-by-day route.
+        if not wanted and days in (2, 3):
+            template = {2: "metro-two", 3: "metro-three"}[days]
+        assigned, turn = {d: [] for d in range(1, days + 1)}, 0
+        for p, dd in wanted:
+            if dd and 1 <= dd <= days:
+                assigned[dd].append(p)
+            else:  # no day given: spread over the days in order
+                assigned[1 + turn % days].append(p); turn += 1
+        result, used = {}, set()
+        for d in range(1, days + 1):
+            req = list(dict.fromkeys(assigned[d]))
+            op = {"day": d, "query": interests or "第一次来武汉 经典 景点", "set": {"start": hhmm(s), "end": hhmm(e)},
+                  "require": req, "exclude": banned, "mobility": deepcopy(mobility), "avoid": sorted(used - set(req))}
+            if home:
+                op["set"].update(origin=home, destination=home)
+            if pace == "relaxed":
+                op["set"]["max_stops"] = 4
+            if template:
+                op["template"] = template
+            card = self.agent.day(str(d), op, None, self.trace)
+            result[str(d)] = card
+            used.update(card["order"])
+        review = trip_review(result)
+        self.trace.append({"step": "trip_review", "audit": review})
+        self._commit(result, "plan")
+        notes = []
+        for k, c in result.items():
+            if c.get("guide_source"):
+                notes.append(f"第{k}天参考《{c['guide_source']['title']}》")
+        return {"ok": True, "summary_lines": day_lines(result), "notes": notes,
+                "reminder": "回答时逐字列出 summary_lines（每行以「第N天：」开头），再用一两句说明亮点；交通与每站时间已显示在行程板上。"}
+
+    def edit_trip(self, day, actions):
+        key = str(day)
+        days = self.draft.get("days") or {}
+        old = days.get(key)
+        if not old:
+            raise Invalid(f"当前行程没有第{day}天。" + ("现有：" + "、".join(f"第{k}天" for k in sorted(days)) if days else "还没有行程，请先用 plan_trip 新建。"))
+        c = old["contract"]
+        keep = list(old["order"])
+        op = {"day": day, "query": "", "set": {}, "mobility": deepcopy(c.get("mobility") or {"rules": []}),
+              "avoid": sorted({n for k, v in days.items() if k != key for n in v["order"]})}
+        added, removed = [], []
+        for a in actions:
+            t = a["type"]
+            if t in ("delay_start", "advance_start"):
+                if not a.get("minutes"):
+                    raise Invalid("推迟或提前需要给出分钟数 minutes")
+                op["set"]["start"] = hhmm(c["start"] + (a["minutes"] if t == "delay_start" else -a["minutes"]))
+            elif t in ("set_start", "set_end"):
+                op["set"]["start" if t == "set_start" else "end"] = hhmm(_clock(a.get("time")))
+            elif t == "remove_stop":
+                p = self._place(a.get("place", ""))
+                if p not in keep:
+                    raise Invalid(f"第{day}天没有「{p}」。当天站点：{'、'.join(keep)}")
+                keep.remove(p); removed.append(p)
+            elif t == "add_stop":
+                p = self._place(a.get("place", ""))
+                if p not in keep:
+                    keep.append(p); added.append(p)
+            elif t == "replace_stop":
+                p, q = self._place(a.get("place", "")), self._place(a.get("with_place", ""))
+                if p not in keep:
+                    raise Invalid(f"第{day}天没有「{p}」。当天站点：{'、'.join(keep)}")
+                keep[keep.index(p)] = q; removed.append(p); added.append(q)
+        if removed:
+            op["remove"] = removed
+            op["unrequire"] = [p for p in removed if p in c.get("must", [])]
+        if added:
+            op["require"] = added
+        op["add"] = [p for p in keep if p not in added]
+        try:
+            card = self.agent.day(key, op, old, self.trace)
+        except Invalid as exc:
+            return {"ok": False, "error": str(exc), "unchanged": True,
+                    "hint": "行程保持原样。可以建议游客删掉某一站、提前出发或放宽结束时间。"}
+        new = {**days, key: card}
+        self._commit(new, "edit")
+        return {"ok": True, "summary_lines": day_lines({key: card}), "diff": card.get("diff"),
+                "reminder": "回答时逐字给出这一天的新安排（以「第N天：」开头），并说明改了什么。"}
+
+    def multi_plan(self, request):
+        # Alternatives and comparisons keep the reviewed multi-deliverable planner.
+        draft, res = self.agent.execute_turn(request, self.draft)
+        kernel_memory = self.draft.get("kernel")
+        self.draft.clear()
+        self.draft.update(draft)
+        if kernel_memory is not None:
+            self.draft["kernel"] = kernel_memory
+        self.deliverables = res.get("deliverables")
+        self.trace.extend(res.get("trace", []))
+        self.mode = res.get("mode") or "compose"
+        return {"ok": True, "result": res.get("answer", "")[:2500],
+                "reminder": "把以上结果整理后告诉游客（保留每套方案的名称与每日站点），并提示可在行程板的「比较」页查看差异。"}
+
+    def remember(self, field, value):
+        memory = self.draft.setdefault("kernel", {}).setdefault("facts", {})
+        memory[field] = value
+        return {"ok": True, "remembered": {field: value}}

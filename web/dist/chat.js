@@ -330,6 +330,8 @@ function workPlan(text = "") {
   return tripWords.test(text) ? ["理解行程要求", "挑选手册里的攻略", "计算站点间交通", "审核时间与约束"] : ["理解你的问题", "检索官方资料", "核对每条引文", "整理成答复"];
 }
 function tickSteps(elapsed) {
+  var _a2;
+  if (((_a2 = get("work-steps")) == null ? void 0 : _a2.dataset.mode) === "live") return;
   const items = document.querySelectorAll("#work-steps li");
   const pace = [0, 1.2, 3.2, 6.5];
   items.forEach((item, i) => {
@@ -739,6 +741,81 @@ async function sendText(text) {
   save();
   await sendPending();
 }
+const stepLabel = (name, args = {}) => ({
+  search_knowledge: "检索官方资料" + (args.query ? "：" + args.query : ""),
+  read_source: "读原文",
+  find_place: "查地点" + (args.name ? "：" + args.name : ""),
+  get_trip: "读取当前行程",
+  plan_trip: "排行程（计算交通与时间）",
+  edit_trip: "调整第 " + (args.day || "?") + " 天行程",
+  read_skill: "翻看接待手册",
+  remember: "记下你的信息"
+})[name] || name;
+function liveStep(name, args) {
+  const steps = get("work-steps");
+  if (!steps) return null;
+  if (steps.dataset.mode !== "live") {
+    steps.replaceChildren();
+    steps.dataset.mode = "live";
+  }
+  const item = node("li", "active", stepLabel(name, args));
+  steps.append(item);
+  chatWindow.scrollTop = chatWindow.scrollHeight;
+  return item;
+}
+function liveText(text) {
+  var _a2;
+  let box = get("live-text");
+  const bubble = (_a2 = get("work-steps")) == null ? void 0 : _a2.parentElement;
+  if (!bubble) return;
+  if (!box) {
+    box = node("div", "live-text");
+    box.id = "live-text";
+    bubble.append(box);
+  }
+  box.textContent = text.replace(/\s*\[S\d+(?:[,，、\s]*S\d+)*\]/g, "");
+  chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+async function streamChat(payload) {
+  var _a2, _b2;
+  if (typeof ReadableStream === "undefined" || typeof TextDecoder === "undefined") return null;
+  const response = await fetch("/chat/stream", { method: "POST", headers: apiHeaders(), body: JSON.stringify(payload) });
+  if (!response.ok || !response.body) {
+    const failed = await response.json().catch(() => ({}));
+    throw new Error(failed.error || "暂时无法完成这次问答");
+  }
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let buffer = "", result = null, text = "", current = null;
+  for (; ; ) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, cut);
+      buffer = buffer.slice(cut + 2);
+      const kind = (_a2 = /^event: (.*)$/m.exec(block)) == null ? void 0 : _a2[1], raw = (_b2 = /^data: (.*)$/m.exec(block)) == null ? void 0 : _b2[1];
+      if (!kind || !raw) continue;
+      const data = JSON.parse(raw);
+      if (kind === "result") result = data;
+      else if (kind === "error") throw new Error(data.error || "暂时无法完成这次问答");
+      else if (kind === "tool") current = liveStep(data.name, data.args);
+      else if (kind === "tool_done" && current) {
+        current.className = data.ok ? "done" : "failed";
+        current = null;
+      } else if (kind === "step") text = "";
+      else if (kind === "delta") {
+        text += data.text;
+        liveText(text);
+      } else if (kind === "step_end" && !data.final) {
+        text = "";
+        liveText("");
+      }
+    }
+  }
+  if (!result) throw new TypeError("stream ended early");
+  return result;
+}
 async function sendPending() {
   if (busy || !state.pending) return;
   const pending = state.pending;
@@ -758,13 +835,13 @@ async function sendPending() {
     tickSteps(elapsed);
   }, 250);
   try {
-    const response = await fetch("/chat", {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify({ query: pending.text, session: state.session, request_id: pending.id })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "暂时无法完成这次问答");
+    const payload = { query: pending.text, session: state.session, request_id: pending.id };
+    let result = await streamChat(payload);
+    if (!result) {
+      const response = await fetch("/chat", { method: "POST", headers: apiHeaders(), body: JSON.stringify(payload) });
+      result = await response.json();
+      if (!response.ok) throw new Error(result.error || "暂时无法完成这次问答");
+    }
     state.session = result.session;
     state.messages.push({ role: "assistant", result: {
       answer: result.answer,
