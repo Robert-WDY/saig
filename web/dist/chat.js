@@ -1,5 +1,5 @@
 "use strict";
-var _a, _b, _c, _d, _e, _f, _g, _h;
+var _a, _b, _c, _d, _e, _f, _g, _h, _i;
 const get = (id) => document.getElementById(id);
 const question = get("question");
 const chatWindow = get("chat-window");
@@ -452,11 +452,14 @@ function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
   if ((change == null ? void 0 : change.kind) === "moved") label.append(node("em", "change-tag", change.delta));
   row.append(clock, label);
   if (leg) {
-    const description = [modes[leg.mode], Number.isFinite(leg.minutes) ? routeTime.duration(leg.minutes) : "", leg.directions].filter(Boolean).join(" · ");
+    const how = ["metro", "transit", "bus"].includes(leg.mode) ? leg.directions : "";
+    const description = [modes[leg.mode], Number.isFinite(leg.minutes) ? routeTime.duration(leg.minutes) : "", how].filter(Boolean).join(" · ");
     const legLine = node("span", "leg", description);
     if (leg.origin && leg.destination && leg.origin !== leg.destination) {
-      const nav = link("高德导航 ↗", Amap.navigate(leg.origin, leg.destination, leg.mode), "amap-nav");
-      nav.title = leg.origin + " → " + leg.destination;
+      const nav = link("", Amap.navigate(leg.origin, leg.destination, leg.mode), "amap-nav");
+      nav.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>';
+      nav.title = "用高德导航：" + leg.origin + " 到 " + leg.destination;
+      nav.setAttribute("aria-label", nav.title);
       legLine.append(" ", nav);
     }
     row.append(legLine);
@@ -540,7 +543,7 @@ function daySection(number, day, open, before = null) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i;
+  var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
@@ -577,7 +580,7 @@ function planCard(plan) {
     content.append(summary);
   }
   for (const [day, details] of Object.entries(plan.cards)) {
-    const before = ((_h2 = plan.changedDays) == null ? void 0 : _h2.includes(day)) ? (_i = plan.previous) == null ? void 0 : _i[day] : null;
+    const before = ((_h2 = plan.changedDays) == null ? void 0 : _h2.includes(day)) ? (_i2 = plan.previous) == null ? void 0 : _i2[day] : null;
     const section = daySection(day, details, day === openDay, before);
     section.addEventListener("toggle", () => {
       if (section.isConnected && section.open) {
@@ -719,6 +722,13 @@ function tripCalendar(plan, firstDay) {
   lines.push("END:VCALENDAR");
   return lines.join("\r\n");
 }
+const exportMenu = get("trip-takeaway");
+document.addEventListener("click", (event) => {
+  if ((exportMenu == null ? void 0 : exportMenu.open) && !exportMenu.contains(event.target)) exportMenu.open = false;
+});
+for (const id of ["trip-amap", "trip-ics"]) (_d = get(id)) == null ? void 0 : _d.addEventListener("click", () => {
+  exportMenu.open = false;
+});
 function renderTakeaway() {
   var _a2, _b2;
   const bar = get("trip-takeaway"), plan = takeawayPlan();
@@ -730,7 +740,7 @@ function renderTakeaway() {
   input.value = fixed || tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
   get("trip-ics").title = "第 1 天按 " + input.value + " 加入日历（告诉江豚出发日期可改）";
 }
-(_d = get("trip-ics")) == null ? void 0 : _d.addEventListener("click", () => {
+(_e = get("trip-ics")) == null ? void 0 : _e.addEventListener("click", () => {
   const plan = takeawayPlan();
   if (!plan) return;
   const [y, m, d] = (get("trip-date").value || "").split("-").map(Number);
@@ -771,7 +781,7 @@ async function startNowPlan() {
   }, () => askNowPlan(), { timeout: 8e3, maximumAge: 3e5 });
 }
 for (const el of document.querySelectorAll("[data-now-plan]")) el.addEventListener("click", startNowPlan);
-(_e = get("trip-amap")) == null ? void 0 : _e.addEventListener("click", async () => {
+(_f = get("trip-amap")) == null ? void 0 : _f.addEventListener("click", async () => {
   const plan = takeawayPlan();
   if (!plan) return;
   if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
@@ -779,7 +789,7 @@ for (const el of document.querySelectorAll("[data-now-plan]")) el.addEventListen
   const url = Amap.day(plan.cards[day]);
   if (url) window.open(url, "_blank", "noopener");
 });
-(_f = get("trip-copy")) == null ? void 0 : _f.addEventListener("click", async () => {
+(_g = get("trip-copy")) == null ? void 0 : _g.addEventListener("click", async () => {
   const plan = takeawayPlan(), button2 = get("trip-copy");
   if (!plan) return;
   const text = tripText(plan);
@@ -792,7 +802,8 @@ for (const el of document.querySelectorAll("[data-now-plan]")) el.addEventListen
   }
   setTimeout(() => {
     label.textContent = "复制文字";
-  }, 1800);
+    exportMenu.open = false;
+  }, 1200);
 });
 function renderBoard() {
   updateMapLink();
@@ -1114,13 +1125,13 @@ async function openFlyover(card, title) {
   const say = typeof Receptionist !== "undefined" && Receptionist.say ? (text) => Receptionist.say(text) : null;
   window.Flyover.open({ stops, title, landmarks: typeof Landmarks !== "undefined" ? Landmarks.LIST : [], say });
 }
-(_g = get("fly-plan")) == null ? void 0 : _g.addEventListener("click", () => {
+(_h = get("fly-plan")) == null ? void 0 : _h.addEventListener("click", () => {
   const plan = takeawayPlan();
   if (!plan) return;
   const day = plan.cards[openDay] ? openDay : Object.keys(plan.cards).sort((a, b) => a - b)[0];
   openFlyover(plan.cards[day], "3D 飞览 · ".concat(plan.title || "行程", " 第 ").concat(day, " 天"));
 });
-(_h = get("fly-demo")) == null ? void 0 : _h.addEventListener("click", () => openFlyover(null, "3D 飞览武汉 · 经典一日"));
+(_i = get("fly-demo")) == null ? void 0 : _i.addEventListener("click", () => openFlyover(null, "3D 飞览武汉 · 经典一日"));
 const tourButton = get("judge-tour");
 if (tourButton) tourButton.addEventListener("click", async () => {
   if (state.pending || tourButton.disabled) return;

@@ -96,7 +96,16 @@
         <header class="panel-head trip-head">
           <div class="head-title"><span class="board-mark" aria-hidden="true">路</span><div><h2 id="workspace-title">行程板</h2><p id="board-summary">排好的行程会出现在这里</p></div></div>
           <div class="board-actions">
-            <a id="jump-map" class="btn secondary sm" href="/routes" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></svg>编辑路线</a>
+            <a id="jump-map" class="btn tool sm" href="/routes" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></svg>编辑路线</a>
+            <details class="menu" id="trip-takeaway" hidden>
+              <summary class="btn tool sm" aria-label="导出行程"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="label">导出</span></summary>
+              <div class="menu-list" role="menu">
+                <input type="hidden" id="trip-date">
+                <button id="trip-amap" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>在高德地图打开当天</button>
+            <button id="trip-ics" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>加到手机日历</button>
+            <button id="trip-copy" type="button" aria-live="polite"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>复制文字</span></button>
+              </div>
+            </details>
             <button id="save-comparison" class="btn secondary sm" type="button" aria-live="polite" hidden>保存对比图</button>
           </div>
         </header>
@@ -107,14 +116,6 @@
         <div id="board-map" class="board-map" hidden>
           <div id="board-map-canvas" aria-label="当天游览路线地图"></div>
           <div class="board-map-bar"><strong id="board-map-label"></strong><button id="fly-plan" class="btn accent sm" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>3D 飞览</button><a id="board-map-open" class="map-expand" href="/city">在武汉地图上看</a></div>
-        </div>
-        <div id="trip-takeaway" class="trip-takeaway" hidden>
-          <input type="hidden" id="trip-date">
-          <div class="takeaway-actions">
-            <button id="trip-amap" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>高德地图</button>
-            <button id="trip-ics" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>手机日历</button>
-            <button id="trip-copy" type="button" aria-live="polite"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>复制文字</span></button>
-          </div>
         </div>
         <div id="plans" class="board-content" role="tabpanel" aria-labelledby="plans-tab" tabindex="0"></div>
         <div id="comparison" class="board-content" role="tabpanel" aria-labelledby="comparison-tab" tabindex="0" hidden></div>

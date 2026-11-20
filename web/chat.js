@@ -434,11 +434,15 @@ function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
   if (change?.kind === "moved") label.append(node("em", "change-tag", change.delta));
   row.append(clock, label);
   if (leg) {
-    const description = [modes[leg.mode], Number.isFinite(leg.minutes) ? routeTime.duration(leg.minutes) : "", leg.directions].filter(Boolean).join(" · ");
+    // Only transit directions carry information (line, transfer); taxi and walking text is boilerplate.
+    const how = ["metro", "transit", "bus"].includes(leg.mode) ? leg.directions : "";
+    const description = [modes[leg.mode], Number.isFinite(leg.minutes) ? routeTime.duration(leg.minutes) : "", how].filter(Boolean).join(" · ");
     const legLine = node("span", "leg", description);
     if (leg.origin && leg.destination && leg.origin !== leg.destination) {
-      const nav = link("高德导航 ↗", Amap.navigate(leg.origin, leg.destination, leg.mode), "amap-nav");
-      nav.title = leg.origin + " → " + leg.destination;
+      const nav = link("", Amap.navigate(leg.origin, leg.destination, leg.mode), "amap-nav");
+      nav.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>';
+      nav.title = "用高德导航：" + leg.origin + " 到 " + leg.destination;
+      nav.setAttribute("aria-label", nav.title);
       legLine.append(" ", nav);
     }
     row.append(legLine);
@@ -670,6 +674,10 @@ function tripCalendar(plan, firstDay) {
   lines.push("END:VCALENDAR");
   return lines.join("\r\n");
 }
+// Export menu: closes after a choice or a click elsewhere.
+const exportMenu = get("trip-takeaway");
+document.addEventListener("click", event => { if (exportMenu?.open && !exportMenu.contains(event.target)) exportMenu.open = false; });
+for (const id of ["trip-amap", "trip-ics"]) get(id)?.addEventListener("click", () => { exportMenu.open = false; });
 function renderTakeaway() {
   const bar = get("trip-takeaway"), plan = takeawayPlan();
   if (!bar) return;
@@ -737,7 +745,7 @@ get("trip-copy")?.addEventListener("click", async () => {
   const label = button.querySelector("span");
   try { await navigator.clipboard.writeText(text); label.textContent = "已复制"; }
   catch { window.prompt("复制下面的行程：", text); }
-  setTimeout(() => { label.textContent = "复制文字"; }, 1800);
+  setTimeout(() => { label.textContent = "复制文字"; exportMenu.open = false; }, 1200);
 });
 
 function renderBoard() {
