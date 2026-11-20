@@ -204,3 +204,13 @@ class MoveStopTests(KernelTests):
         box.call("plan_trip", {"days": 1, "must": [{"place": "黄鹤楼"}, {"place": "户部巷"}]})
         r = box.call("edit_trip", {"day": 1, "actions": [{"type": "remove_stop", "place": "黄鹤楼"}, {"type": "add_stop", "place": "黄鹤楼"}]})
         self.assertTrue(r["ok"], r)
+
+
+class ReorderTests(unittest.TestCase):
+    def test_reorder_prefers_less_travel_over_filling_the_wait(self):
+        from planning import new_contract, reorder
+        c = new_contract()
+        c["windows"] = {"黄鹤楼": [780, 1439]}
+        order, proof = reorder(c, ["古琴台", "龟山公园", "武汉长江大桥", "黄鹤楼", "户部巷"])
+        self.assertEqual(order, ["古琴台", "龟山公园", "武汉长江大桥", "户部巷", "黄鹤楼"])
+        self.assertFalse(proof["violations"])

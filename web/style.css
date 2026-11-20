@@ -276,6 +276,7 @@ dialog::backdrop { background: #15262188; }
 }
 .wuhan-board .leaflet-control-scale-line {background:#fffaebdb;border-color:#596e64;color:#394e47}
 .wuhan-board .board-model {background-image:url("/web/atlas/wuhan-landmarks.webp");background-size:200% 200%;background-repeat:no-repeat;pointer-events:none;filter:drop-shadow(1px 3px 1px #395c422b)}
+.wuhan-board .board-model.model-svg{background:none}.board-model.model-svg svg{width:100%;height:100%;display:block}
 .model-tower{background-position:0 0}.model-bridge{background-position:100% 0}.model-campus{background-position:0 100%}.model-mountain{background-position:100% 100%}
 .board-status{position:absolute;z-index:650;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;white-space:nowrap;background:#fffaf0;border:1px solid #9eae98;border-radius:15px;color:#264e4b;padding:4px 12px;font-size:12px}
 .board-status button{border:0;background:none;color:#16418b;text-decoration:underline;min-height:28px}
@@ -399,3 +400,4 @@ dialog::backdrop { background: #15262188; }
 .trip-takeaway strong { color: var(--accent); margin-right: auto; }
 .trip-takeaway input { font: inherit; padding: 4px 6px; border: 1px solid #c9cfdc; border-radius: 6px; }
 @media (max-width: 560px) { .trip-takeaway strong { flex-basis: 100%; } }
+.leg .amap-nav { white-space: nowrap; font-size: 12px; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }

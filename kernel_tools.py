@@ -139,17 +139,19 @@ SCHEMAS = {
             "pace": {"type": "string", "enum": ["normal", "relaxed"], "description": "relaxed：老人小孩、怕累，少站少走"},
             "max_walk_m": {"type": "integer", "minimum": 200, "maximum": 5000, "description": "每段步行上限（米），只在游客明确提出时填"}}}},
     "edit_trip": {
-        "description": "修改已有行程的某一天：推迟/提前出发、改起止时间、删站、加站、换站，或把某一站挪到上午/下午/傍晚/指定时间之后（move_stop，其余站点保留、自动重排顺序）。游客说「X 不想早上去，换到下午」用 move_stop，不要改出发时间。未提到的站点保留。排不下时会返回真实冲突，如实告诉游客并给出选项。",
+        "description": "修改已有行程的某一天：推迟/提前出发、改起止时间、删站、加站、换站，把某一站挪到上午/下午/傍晚/指定时间之后（move_stop）、改当天出发地或结束地（set_origin / set_destination，如「从酒店出发」「最后到汉口站赶火车」）、改某站停留时长（set_duration）、按顺路重新规划整天顺序（reoptimize，如「太绕了」「重新排一下」）。move_stop、改起终点都会自动按顺路重排全天顺序，其余站点保留。游客说「X 不想早上去，换到下午」用 move_stop，不要改出发时间。未提到的站点保留。排不下时会返回真实冲突，如实告诉游客并给出选项。",
         "parameters": {"type": "object", "additionalProperties": False, "required": ["day", "actions"], "properties": {
             "day": {"type": "integer", "minimum": 1, "maximum": 5},
             "actions": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"type": "object", "additionalProperties": False,
                         "required": ["type"], "properties": {
-                            "type": {"type": "string", "enum": ["delay_start", "advance_start", "set_start", "set_end", "remove_stop", "add_stop", "replace_stop", "move_stop"]},
+                            "type": {"type": "string", "enum": ["delay_start", "advance_start", "set_start", "set_end", "remove_stop", "add_stop", "replace_stop", "move_stop",
+                                                              "set_origin", "set_destination", "set_duration", "reoptimize"]},
                             "period": {"type": "string", "enum": ["morning", "afternoon", "evening"], "description": "move_stop 用：挪到上午 / 下午 / 傍晚"},
                             "minutes": {"type": "integer", "minimum": 5, "maximum": 480},
                             "time": {"type": "string", "description": "HH:MM；move_stop 时表示最早几点开始这一站"},
                             "place": {"type": "string"},
-                            "with_place": {"type": "string"}}}}}}},
+                            "with_place": {"type": "string"},
+                            "duration_minutes": {"type": "integer", "minimum": 15, "maximum": 360, "description": "set_duration 用：这一站停留多少分钟"}}}}}}},
     "multi_plan": {
         "description": "同时交付多套备选行程并比较（如「一份一日游和一份两日游，比较一下」），或修改、比较、选用已交付的备选方案时使用。把游客的原话完整传入；结果会显示在行程板的方案与比较页。普通的单套行程用 plan_trip。",
         "parameters": {"type": "object", "additionalProperties": False, "required": ["request"],
@@ -377,7 +379,21 @@ class Toolbox:
                     if not window:
                         raise Invalid("move_stop 需要 period（morning/afternoon/evening）或 time")
                 op["set"].setdefault("windows", {})[p] = [hhmm(window[0]), hhmm(window[1])]
+                op["reoptimize"] = True
                 moved.append(p)
+            elif t in ("set_origin", "set_destination"):
+                p = self._place(a.get("place", ""))
+                op["set"]["origin" if t == "set_origin" else "destination"] = p
+                op["reoptimize"] = True
+            elif t == "set_duration":
+                p = self._place(a.get("place", ""))
+                if p not in keep:
+                    raise Invalid(f"第{day}天没有「{p}」。当天站点：{'、'.join(keep)}")
+                if not a.get("duration_minutes"):
+                    raise Invalid("set_duration 需要 duration_minutes")
+                op["set"].setdefault("durations", {})[p] = a["duration_minutes"]
+            elif t == "reoptimize":
+                op["reoptimize"] = True
             elif t == "replace_stop":
                 p, q = self._place(a.get("place", "")), self._place(a.get("with_place", ""))
                 if p not in keep:

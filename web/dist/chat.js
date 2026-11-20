@@ -1,5 +1,5 @@
 "use strict";
-var _a, _b, _c, _d, _e;
+var _a, _b, _c, _d, _e, _f;
 const get = (id) => document.getElementById(id);
 const question = get("question");
 const chatWindow = get("chat-window");
@@ -14,6 +14,7 @@ let activeTab = "plans";
 let selectedPlan = ((_a = state.mapSelection) == null ? void 0 : _a.plan) || ((_b = state.plans[0]) == null ? void 0 : _b.id) || "";
 let openDay = ((_c = state.mapSelection) == null ? void 0 : _c.day) || "1";
 let animateReply = false;
+let routePoints = null;
 let streamedReply = false;
 function restore() {
   try {
@@ -189,6 +190,11 @@ let showcase = null, placeIndex = {};
 fetch("/city-places").then((r) => r.ok ? r.json() : []).then((rows) => {
   for (const row of rows) placeIndex[row.name] = row;
   if (rows.length) renderBoard();
+}).catch(() => {
+});
+if (typeof WuhanMap !== "undefined") WuhanMap.readJSON("/route-points").then((points) => {
+  routePoints = points;
+  if (state.plans.length) renderBoard();
 }).catch(() => {
 });
 fetch("/showcase").then((r) => r.ok ? r.json() : null).then((data) => {
@@ -382,6 +388,50 @@ function typeReply() {
     }
   }, 28);
 }
+const Amap = /* @__PURE__ */ (() => {
+  const a = 6378245, ee = 0.006693421622965943;
+  const tLat = (x, y) => {
+    let r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+    r += (20 * Math.sin(y * Math.PI) + 40 * Math.sin(y / 3 * Math.PI)) * 2 / 3;
+    return r + (160 * Math.sin(y / 12 * Math.PI) + 320 * Math.sin(y * Math.PI / 30)) * 2 / 3;
+  };
+  const tLon = (x, y) => {
+    let r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+    r += (20 * Math.sin(x * Math.PI) + 40 * Math.sin(x / 3 * Math.PI)) * 2 / 3;
+    return r + (150 * Math.sin(x / 12 * Math.PI) + 300 * Math.sin(x / 30 * Math.PI)) * 2 / 3;
+  };
+  function gcj(lat, lon) {
+    let dLat = tLat(lon - 105, lat - 35), dLon = tLon(lon - 105, lat - 35);
+    const rad = lat / 180 * Math.PI, m = 1 - ee * Math.sin(rad) ** 2, sq = Math.sqrt(m);
+    dLat = dLat * 180 / (a * (1 - ee) / (m * sq) * Math.PI);
+    dLon = dLon * 180 / (a / sq * Math.cos(rad) * Math.PI);
+    return [lon + dLon, lat + dLat].map((v) => v.toFixed(6));
+  }
+  const point = (name) => {
+    const p = routePoints == null ? void 0 : routePoints[name];
+    return p && Number.isFinite(p.lat) && Number.isFinite(p.lon) ? gcj(p.lat, p.lon) : null;
+  };
+  const pin = (name) => {
+    const p = point(name);
+    return p && p.join(",") + "," + encodeURIComponent(name);
+  };
+  const MODE = { walk: "walk", metro: "bus", transit: "bus", bus: "bus", taxi: "car", car: "car" };
+  return {
+    navigate(from, to, mode) {
+      const a2 = pin(from), b = pin(to);
+      if (!b) return "https://uri.amap.com/search?keyword=" + encodeURIComponent(to) + "&city=武汉&src=wuhan-switchboard&callnative=1";
+      return "https://uri.amap.com/navigation?" + (a2 ? "from=" + a2 + "&" : "") + "to=" + b + "&mode=" + (MODE[mode] || "bus") + "&city=武汉&coordinate=gaode&src=wuhan-switchboard&callnative=1";
+    },
+    day(card) {
+      var _a2, _b2, _c2;
+      const names = [(_a2 = card.contract) == null ? void 0 : _a2.origin, ...(((_b2 = card.audit) == null ? void 0 : _b2.stops) || []).map((s) => s.place), (_c2 = card.contract) == null ? void 0 : _c2.destination].filter(Boolean);
+      const pins = [...new Set(names)].map(pin).filter(Boolean).slice(0, 10);
+      return pins.length ? "https://uri.amap.com/marker?markers=" + pins.join("|") + "&src=wuhan-switchboard&callnative=1" : null;
+    }
+  };
+})();
 function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
   const row = node("li", (arrival ? "arrival" : "") + (change ? " changed " + change.kind : ""));
   const clock = node("time", "", time);
@@ -403,7 +453,13 @@ function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
   row.append(clock, label);
   if (leg) {
     const description = [modes[leg.mode], Number.isFinite(leg.minutes) ? routeTime.duration(leg.minutes) : "", leg.directions].filter(Boolean).join(" · ");
-    row.append(node("span", "leg", description));
+    const legLine = node("span", "leg", description);
+    if (leg.origin && leg.destination && leg.origin !== leg.destination) {
+      const nav = link("高德导航 ↗", Amap.navigate(leg.origin, leg.destination, leg.mode), "amap-nav");
+      nav.title = leg.origin + " → " + leg.destination;
+      legLine.append(" ", nav);
+    }
+    row.append(legLine);
   }
   return row;
 }
@@ -421,7 +477,7 @@ function stopChange(stop, before, contract) {
   };
 }
 function daySection(number, day, open, before = null) {
-  var _a2, _b2, _c2, _d2, _e2, _f, _g;
+  var _a2, _b2, _c2, _d2, _e2, _f2, _g;
   const details = node("details", before ? "day-card has-changes" : "day-card");
   details.open = open;
   const stops = ((_a2 = day.audit) == null ? void 0 : _a2.stops) || [];
@@ -461,7 +517,7 @@ function daySection(number, day, open, before = null) {
   if (removed.length) list.append(node("li", "removed", "已移除：" + removed.map((stop) => stop.place).join("、")));
   if (contract.destination) {
     const limit = contract.end - (contract.buffer || 0);
-    const arrival = routeTime.arrival((_f = day.audit) == null ? void 0 : _f.arrival, limit);
+    const arrival = routeTime.arrival((_f2 = day.audit) == null ? void 0 : _f2.arrival, limit);
     list.append(stopRow(
       "预计抵达 " + contract.destination + " · 最晚 " + routeTime.exact(limit),
       arrival,
@@ -478,7 +534,7 @@ function daySection(number, day, open, before = null) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b2, _c2, _d2, _e2, _f, _g;
+  var _a2, _b2, _c2, _d2, _e2, _f2, _g;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
@@ -515,7 +571,7 @@ function planCard(plan) {
     content.append(summary);
   }
   for (const [day, details] of Object.entries(plan.cards)) {
-    const before = ((_f = plan.changedDays) == null ? void 0 : _f.includes(day)) ? (_g = plan.previous) == null ? void 0 : _g[day] : null;
+    const before = ((_f2 = plan.changedDays) == null ? void 0 : _f2.includes(day)) ? (_g = plan.previous) == null ? void 0 : _g[day] : null;
     const section = daySection(day, details, day === openDay, before);
     section.addEventListener("toggle", () => {
       if (section.isConnected && section.open) {
@@ -580,7 +636,7 @@ function updateMapLink() {
   get("city-plan-link").href = url.replace("/routes", "/city");
   for (const link2 of [get("jump-map"), document.querySelector(".nav-map")]) link2.href = url;
 }
-let boardMap = null, boardLayer = null, routePoints = null, boardKey = "";
+let boardMap = null, boardLayer = null, boardKey = "";
 async function drawBoardMap() {
   var _a2, _b2, _c2, _d2, _e2;
   const box = get("board-map");
@@ -678,7 +734,15 @@ function renderTakeaway() {
   link2.remove();
   setTimeout(() => URL.revokeObjectURL(link2.href), 4e3);
 });
-(_e = get("trip-copy")) == null ? void 0 : _e.addEventListener("click", async () => {
+(_e = get("trip-amap")) == null ? void 0 : _e.addEventListener("click", async () => {
+  const plan = takeawayPlan();
+  if (!plan) return;
+  if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
+  const day = plan.cards[openDay] ? openDay : Object.keys(plan.cards).sort((a, b) => a - b)[0];
+  const url = Amap.day(plan.cards[day]);
+  if (url) window.open(url, "_blank", "noopener");
+});
+(_f = get("trip-copy")) == null ? void 0 : _f.addEventListener("click", async () => {
   const plan = takeawayPlan(), button2 = get("trip-copy");
   if (!plan) return;
   const text = tripText(plan);

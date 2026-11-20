@@ -1,12 +1,12 @@
 """Planning and acceptance share the same frozen Day contract and evaluator."""
 from collections import Counter
 from copy import deepcopy
-from itertools import combinations
+from itertools import combinations, permutations
 from places import PLACES, region
 from time import monotonic
 from limits import TurnExpired, remaining
 from contextvars import ContextVar
-from transport import choose
+from transport import choose, straight_km
 from trip_contract import settings
 
 transport_cache=ContextVar("transport_cache",default=None)
@@ -151,9 +151,63 @@ def guide_candidates(retrieved, required):
     return sorted(result,key=lambda x:-x[0])
 
 
-def solve(c, prior, guide_order, add=(), remove=(), old_stops=(), replacements=(), preserve_guide_order=False):
-    """Preserve relative order of surviving old stops. Minimize deleted/added objects first."""
+def _rough_minutes(a, b):
+    if not a or not b or a == b:
+        return 0
+    km = straight_km(a, b)
+    return 15 if km is None else (8 + km * 3.2 if km > 1.2 else km * 14)
+
+
+def reorder(c, stops, candidates=15):
+    """Re-plan the visiting order of a fixed set of stops: every permutation is scored with a quick
+    straight-line simulation (origin, windows, waiting, destination); the best few are audited for real."""
+    if len(stops) > 8 or len(stops) < 2:
+        return None
+    deadline = monotonic() + remaining(6)
+    scored = []
+    for order in permutations(stops):
+        t, prev, idle, km, moving = c["start"], c["origin"], 0, 0.0, 0
+        late = False
+        for n in order:
+            moving += _rough_minutes(prev, n)
+            t += _rough_minutes(prev, n)
+            km += straight_km(prev, n) or 0 if prev else 0
+            lo, hi = c["windows"].get(n, [0, 1439])
+            if t < lo:
+                idle += lo - t
+                t = lo
+            t += c["durations"].get(n, PLACES[n]["minutes"])
+            late = late or t > hi
+            prev = n
+        moving += _rough_minutes(prev, c["destination"])
+        t += _rough_minutes(prev, c["destination"])
+        # Travel first (detours and river crossings cost), waiting half as much, finish time breaks ties.
+        scored.append((late, moving + idle * 0.5 + t * 0.05, km, order))
+    scored.sort(key=lambda row: row[:3])
+    best = None
+    for late, _, _, order in scored[:candidates]:
+        if monotonic() >= deadline:
+            break
+        proof = evaluate(c, list(order))
+        if proof["violations"]:
+            continue
+        legs = sum(s["leg"] for s in proof["stops"]) + proof["last_leg"]
+        idle = sum(max(0, s["start"] - (p["end"] + s["leg"])) for p, s in zip(proof["stops"], proof["stops"][1:]))
+        rank = (legs + idle * 0.5 + proof["arrival"] * 0.05, proof["arrival"])
+        if best is None or rank < best[0]:
+            best = (rank, list(order), proof)
+    return best and (best[1], best[2])
+
+
+def solve(c, prior, guide_order, add=(), remove=(), old_stops=(), replacements=(), preserve_guide_order=False, reoptimize=False):
+    """Preserve relative order of surviving old stops (unless reoptimize). Minimize deleted/added objects first."""
     validate(c)
+    if reoptimize and prior:
+        keep = [n for n in dict.fromkeys(prior + list(c["must"]) + list(add)) if n not in remove and n not in c["exclude"]]
+        if not set(c["must"]) & set(remove):
+            found = reorder(c, keep)
+            if found:
+                return found
     required=list(dict.fromkeys(c["must"]+list(add)))
     if set(required)&set(remove):
         raise Invalid("指定删除的地点仍为必去点")

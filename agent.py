@@ -332,7 +332,8 @@ class Agent:
                     swaps.append((row["old"],n))
                 route,check=solve(c,prior,order,op.get("add",[])+[n for _,n in swaps],
                                   op.get("remove",[])+[p for p,_ in swaps],
-                                  old["audit"]["stops"] if old else [],swaps,preserve_guide_order=bool(template and guide_id==template["id"]))
+                                  old["audit"]["stops"] if old else [],swaps,preserve_guide_order=bool(template and guide_id==template["id"]),
+                                  reoptimize=bool(op.get("reoptimize")))
             except Invalid as err:
                 failures.append(str(err))
                 trace.append({"day":key,"attempt":guide_id,"audit_error":str(err)})

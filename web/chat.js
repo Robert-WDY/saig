@@ -14,6 +14,7 @@ let activeTab = "plans";
 let selectedPlan = state.mapSelection?.plan || state.plans[0]?.id || "";
 let openDay = state.mapSelection?.day || "1";
 let animateReply = false;
+let routePoints = null; // place → WGS84 point, for the board map and Amap export
 let streamedReply = false; // reply text already shown live; don't retype it
 
 function restore() {
@@ -195,6 +196,7 @@ fetch("/city-places").then(r => r.ok ? r.json() : []).then(rows => {
   for (const row of rows) placeIndex[row.name] = row;
   if (rows.length) renderBoard();
 }).catch(() => {});
+if (typeof WuhanMap !== "undefined") WuhanMap.readJSON("/route-points").then(points => { routePoints = points; if (state.plans.length) renderBoard(); }).catch(() => {});
 fetch("/showcase").then(r => r.ok ? r.json() : null).then(data => { showcase = data; if (data) renderMessages(); }).catch(() => {});
 function appendInfoCards(bubble, result) {
   if (!showcase) return;
@@ -376,6 +378,42 @@ function typeReply() {
   }, 28);
 }
 
+// Amap export: WGS84 → GCJ-02 (what Amap expects), per-leg navigation and a day's stops as map markers.
+const Amap = (() => {
+  const a = 6378245, ee = 0.00669342162296594323;
+  const tLat = (x, y) => { let r = -100 + 2 * x + 3 * y + .2 * y * y + .1 * x * y + .2 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+    r += (20 * Math.sin(y * Math.PI) + 40 * Math.sin(y / 3 * Math.PI)) * 2 / 3;
+    return r + (160 * Math.sin(y / 12 * Math.PI) + 320 * Math.sin(y * Math.PI / 30)) * 2 / 3; };
+  const tLon = (x, y) => { let r = 300 + x + 2 * y + .1 * x * x + .1 * x * y + .1 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+    r += (20 * Math.sin(x * Math.PI) + 40 * Math.sin(x / 3 * Math.PI)) * 2 / 3;
+    return r + (150 * Math.sin(x / 12 * Math.PI) + 300 * Math.sin(x / 30 * Math.PI)) * 2 / 3; };
+  function gcj(lat, lon) {
+    let dLat = tLat(lon - 105, lat - 35), dLon = tLon(lon - 105, lat - 35);
+    const rad = lat / 180 * Math.PI, m = 1 - ee * Math.sin(rad) ** 2, sq = Math.sqrt(m);
+    dLat = dLat * 180 / ((a * (1 - ee)) / (m * sq) * Math.PI);
+    dLon = dLon * 180 / (a / sq * Math.cos(rad) * Math.PI);
+    return [lon + dLon, lat + dLat].map(v => v.toFixed(6));
+  }
+  const point = name => { const p = routePoints?.[name]; return p && Number.isFinite(p.lat) && Number.isFinite(p.lon) ? gcj(p.lat, p.lon) : null; };
+  const pin = name => { const p = point(name); return p && p.join(",") + "," + encodeURIComponent(name); };
+  const MODE = {walk: "walk", metro: "bus", transit: "bus", bus: "bus", taxi: "car", car: "car"};
+  return {
+    navigate(from, to, mode) {
+      const a = pin(from), b = pin(to);
+      if (!b) return "https://uri.amap.com/search?keyword=" + encodeURIComponent(to) + "&city=武汉&src=wuhan-switchboard&callnative=1";
+      return "https://uri.amap.com/navigation?" + (a ? "from=" + a + "&" : "") + "to=" + b + "&mode=" + (MODE[mode] || "bus") +
+        "&city=武汉&coordinate=gaode&src=wuhan-switchboard&callnative=1";
+    },
+    day(card) {
+      const names = [card.contract?.origin, ...(card.audit?.stops || []).map(s => s.place), card.contract?.destination].filter(Boolean);
+      const pins = [...new Set(names)].map(pin).filter(Boolean).slice(0, 10);
+      return pins.length ? "https://uri.amap.com/marker?markers=" + pins.join("|") + "&src=wuhan-switchboard&callnative=1" : null;
+    }
+  };
+})();
+
 function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
   const row = node("li", (arrival ? "arrival" : "") + (change ? " changed " + change.kind : ""));
   const clock = node("time", "", time);
@@ -397,7 +435,13 @@ function stopRow(name, time, leg, arrival = false, exact = "", change = null) {
   row.append(clock, label);
   if (leg) {
     const description = [modes[leg.mode], Number.isFinite(leg.minutes) ? routeTime.duration(leg.minutes) : "", leg.directions].filter(Boolean).join(" · ");
-    row.append(node("span", "leg", description));
+    const legLine = node("span", "leg", description);
+    if (leg.origin && leg.destination && leg.origin !== leg.destination) {
+      const nav = link("高德导航 ↗", Amap.navigate(leg.origin, leg.destination, leg.mode), "amap-nav");
+      nav.title = leg.origin + " → " + leg.destination;
+      legLine.append(" ", nav);
+    }
+    row.append(legLine);
   }
   return row;
 }
@@ -554,7 +598,7 @@ function updateMapLink() {
   for (const link of [get("jump-map"), document.querySelector(".nav-map")]) link.href = url;
 }
 
-let boardMap = null, boardLayer = null, routePoints = null, boardKey = "";
+let boardMap = null, boardLayer = null, boardKey = "";
 async function drawBoardMap() {
   const box = get("board-map");
   const plan = state.plans.find(p => p.id === selectedPlan);
@@ -638,6 +682,14 @@ get("trip-ics")?.addEventListener("click", () => {
   link.download = "武汉行程.ics";
   document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+});
+get("trip-amap")?.addEventListener("click", async () => {
+  const plan = takeawayPlan();
+  if (!plan) return;
+  if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
+  const day = plan.cards[openDay] ? openDay : Object.keys(plan.cards).sort((a, b) => a - b)[0];
+  const url = Amap.day(plan.cards[day]);
+  if (url) window.open(url, "_blank", "noopener");
 });
 get("trip-copy")?.addEventListener("click", async () => {
   const plan = takeawayPlan(), button = get("trip-copy");

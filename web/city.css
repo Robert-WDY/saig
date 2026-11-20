@@ -83,3 +83,10 @@
 .detail-icon {display:inline-grid;place-items:center;width:34px;height:34px;margin-right:8px;vertical-align:-6px;border-radius:50%;background:#fffaf0;border:2px solid #12399d}
 #filters button {display:inline-flex;align-items:center;gap:5px}
 #filters [aria-pressed=true] svg {filter:brightness(0) invert(1)}
+
+.atlas-canvas{position:relative}
+.landmark-themes{position:absolute;z-index:500;top:10px;left:56px;right:10px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;pointer-events:none}
+.landmark-themes span{font-size:12px;font-weight:700;color:#1b46b9;background:#fffaf0e6;padding:3px 6px;border-radius:6px}
+.landmark-themes button{pointer-events:auto;font:inherit;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid #1b46b9;background:#fffaf0e6;color:#1b46b9;cursor:pointer}
+.landmark-themes button[aria-pressed="true"]{background:#1b46b9;color:#fff}
+@media (max-width:560px){.landmark-themes{left:48px;gap:3px}.landmark-themes button{padding:2px 7px}}

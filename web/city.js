@@ -244,3 +244,17 @@ for(const b of document.querySelectorAll("#filters button")){
   const kind={"景点":"pagoda","大学":"campus","美食":"noodles"}[b.textContent.trim()];
   if(kind)b.insertAdjacentHTML("afterbegin",MapIcons.svg(kind,17));
 }
+
+// Landmark themes: show the map's illustrated landmarks for one theme at a time.
+(()=>{
+  const bar=el("landmark-themes");
+  if(!bar||typeof Landmarks==="undefined")return;
+  bar.append(Object.assign(document.createElement("span"),{textContent:"地标"}));
+  for(const [key,label] of Object.entries(Landmarks.THEMES)){
+    const count=key==="all"?Landmarks.LIST.length:Landmarks.LIST.filter(l=>l.theme===key).length;
+    const b=document.createElement("button");b.type="button";b.textContent=label;b.dataset.theme=key;
+    b.title=count+" 个地标";b.setAttribute("aria-pressed",String(key==="all"));
+    b.onclick=()=>{map.landmarkTheme(key);bar.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));};
+    bar.append(b);
+  }
+})();

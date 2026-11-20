@@ -229,26 +229,31 @@ const WuhanMap = (() => {
     artPane.style.zIndex = "450";
     artPane.style.pointerEvents = "none";
     let lastBand = -1;
+    let theme = "all";
     function landmarkArt() {
       const z = map.getZoom(), band = z < 10.7 ? 0 : z < 12.4 ? 1 : 2;
       container.dataset.boardScale = String(band);
       if (band === lastBand) return;
       lastBand = band;
       art.clearLayers();
-      for (const [name, position, cell, minBand, size] of [
-        ["黄鹤楼", [30.54694, 114.29694], "tower", 0, 85],
-        ["木兰山", [31.103895, 114.389476], "mountain", 0, 92],
-        ["九真山", [30.483688, 113.949607], "mountain", 0, 58],
-        ["清凉寨", [31.30055, 114.210498], "mountain", 0, 54],
-        ["武汉大学", [30.54083, 114.36111], "campus", 1, 76],
-        ["武汉长江大桥", [30.5505, 114.2848], "bridge", 2, 88]
-      ]) {
-        if (band < minBand) continue;
-        const width = band === 0 ? size : Math.round(size * 0.87);
-        const icon = L.divIcon({ className: "board-model model-" + cell, iconSize: [width, width], iconAnchor: [width / 2, width - 4] });
-        L.marker(position, { icon, pane: "landmarks", interactive: false, keyboard: false, alt: name }).addTo(art);
+      const list = typeof Landmarks !== "undefined" ? Landmarks.LIST : [];
+      for (const item of list) {
+        if (band < item.band || theme !== "all" && item.theme !== theme) continue;
+        const width = band === 0 ? item.size : Math.round(item.size * 0.87);
+        const icon = L.divIcon({
+          className: "board-model" + (item.sprite ? " model-" + item.sprite : " model-svg theme-" + item.theme),
+          html: item.sprite ? "" : Landmarks.html(item),
+          iconSize: [width, width],
+          iconAnchor: [width / 2, width - 4]
+        });
+        L.marker(item.at, { icon, pane: "landmarks", interactive: false, keyboard: false, alt: item.name }).addTo(art);
       }
     }
+    map.landmarkTheme = (value2) => {
+      theme = value2 || "all";
+      lastBand = -1;
+      landmarkArt();
+    };
     function minimum() {
       const min = Math.min(11, map.getBoundsZoom(bounds, false, [36, 36]));
       if (map.getZoom() < min) map.setZoom(min, { animate: false });
