@@ -1,5 +1,5 @@
 "use strict";
-var _a, _b, _c;
+var _a, _b, _c, _d, _e;
 const get = (id) => document.getElementById(id);
 const question = get("question");
 const chatWindow = get("chat-window");
@@ -14,6 +14,7 @@ let activeTab = "plans";
 let selectedPlan = ((_a = state.mapSelection) == null ? void 0 : _a.plan) || ((_b = state.plans[0]) == null ? void 0 : _b.id) || "";
 let openDay = ((_c = state.mapSelection) == null ? void 0 : _c.day) || "1";
 let animateReply = false;
+let streamedReply = false;
 function restore() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(storageKey));
@@ -420,7 +421,7 @@ function stopChange(stop, before, contract) {
   };
 }
 function daySection(number, day, open, before = null) {
-  var _a2, _b2, _c2, _d, _e, _f, _g;
+  var _a2, _b2, _c2, _d2, _e2, _f, _g;
   const details = node("details", before ? "day-card has-changes" : "day-card");
   details.open = open;
   const stops = ((_a2 = day.audit) == null ? void 0 : _a2.stops) || [];
@@ -431,7 +432,7 @@ function daySection(number, day, open, before = null) {
   const contract = day.contract || {};
   const legs = ((_b2 = day.audit) == null ? void 0 : _b2.legs) || [];
   if (contract.origin && contract.origin !== ((_c2 = stops[0]) == null ? void 0 : _c2.place)) {
-    const was = (_d = before == null ? void 0 : before.contract) == null ? void 0 : _d.start;
+    const was = (_d2 = before == null ? void 0 : before.contract) == null ? void 0 : _d2.start;
     list.append(stopRow(
       contract.origin + "出发",
       routeTime.exact(contract.start),
@@ -456,7 +457,7 @@ function daySection(number, day, open, before = null) {
       stopChange(stop, before, contract)
     ));
   }
-  const removed = (((_e = before == null ? void 0 : before.audit) == null ? void 0 : _e.stops) || []).filter((old) => !stops.some((stop) => stop.place === old.place));
+  const removed = (((_e2 = before == null ? void 0 : before.audit) == null ? void 0 : _e2.stops) || []).filter((old) => !stops.some((stop) => stop.place === old.place));
   if (removed.length) list.append(node("li", "removed", "已移除：" + removed.map((stop) => stop.place).join("、")));
   if (contract.destination) {
     const limit = contract.end - (contract.buffer || 0);
@@ -477,7 +478,7 @@ function daySection(number, day, open, before = null) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b2, _c2, _d, _e, _f, _g;
+  var _a2, _b2, _c2, _d2, _e2, _f, _g;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
@@ -503,13 +504,13 @@ function planCard(plan) {
       const card2 = plan.cards[day];
       const contract = card2 == null ? void 0 : card2.contract;
       const before = (_b2 = plan.beforeCounts) == null ? void 0 : _b2[day];
-      const after = (_d = (_c2 = card2 == null ? void 0 : card2.audit) == null ? void 0 : _c2.stops) == null ? void 0 : _d.length;
+      const after = (_d2 = (_c2 = card2 == null ? void 0 : card2.audit) == null ? void 0 : _c2.stops) == null ? void 0 : _d2.length;
       if (Number.isInteger(before) && Number.isInteger(after) && before !== after) {
         summary.append(node("p", "stop-change", before + " 站 → " + after + " 站"));
       }
       if (!(contract == null ? void 0 : contract.destination)) continue;
       const limit = contract.end - (contract.buffer || 0);
-      summary.append(node("p", "", "预计 " + routeTime.arrival((_e = card2.audit) == null ? void 0 : _e.arrival, limit) + " 到" + contract.destination + " · 最晚 " + routeTime.exact(limit)));
+      summary.append(node("p", "", "预计 " + routeTime.arrival((_e2 = card2.audit) == null ? void 0 : _e2.arrival, limit) + " 到" + contract.destination + " · 最晚 " + routeTime.exact(limit)));
     }
     content.append(summary);
   }
@@ -581,7 +582,7 @@ function updateMapLink() {
 }
 let boardMap = null, boardLayer = null, routePoints = null, boardKey = "";
 async function drawBoardMap() {
-  var _a2, _b2, _c2, _d, _e;
+  var _a2, _b2, _c2, _d2, _e2;
   const box = get("board-map");
   const plan = state.plans.find((p) => p.id === selectedPlan);
   const card = ((_a2 = plan == null ? void 0 : plan.cards) == null ? void 0 : _a2[openDay]) || plan && Object.values(plan.cards)[0];
@@ -599,7 +600,7 @@ async function drawBoardMap() {
     boardLayer = L.layerGroup().addTo(boardMap);
   }
   boardMap.invalidateSize();
-  const key = [plan.id, plan.version, day, (((_d = card.audit) == null ? void 0 : _d.stops) || []).map((s) => s.place + s.start).join()].join("|");
+  const key = [plan.id, plan.version, day, (((_d2 = card.audit) == null ? void 0 : _d2.stops) || []).map((s) => s.place + s.start).join()].join("|");
   if (key === boardKey) return;
   boardKey = key;
   boardLayer.clearLayers();
@@ -608,7 +609,7 @@ async function drawBoardMap() {
   for (let i = 1; i < stops.length; i++) {
     L.polyline([stops[i - 1].coords, stops[i].coords], { renderer: svg, interactive: false, color: "#fff8dd", weight: 7, opacity: 0.95 }).addTo(boardLayer);
     const leg = L.polyline([stops[i - 1].coords, stops[i].coords], { renderer: svg, interactive: false, color: "#e8562d", weight: 3.5, className: "board-leg" }).addTo(boardLayer);
-    (_e = leg.getElement()) == null ? void 0 : _e.style.setProperty("--delay", i * 0.28 + "s");
+    (_e2 = leg.getElement()) == null ? void 0 : _e2.style.setProperty("--delay", i * 0.28 + "s");
   }
   stops.forEach((stop, i) => {
     const icon = L.divIcon({ className: "atlas-step board-step", html: '<span style="animation-delay:' + i * 0.28 + 's">' + (i + 1) + "</span>", iconSize: [26, 26], iconAnchor: [13, 13] });
@@ -616,8 +617,84 @@ async function drawBoardMap() {
   });
   if (stops.length) boardMap.fitBounds(L.latLngBounds(stops.map((s) => s.coords)), { paddingTopLeft: [26, 26], paddingBottomRight: [26, 46], maxZoom: 14.2, animate: false });
 }
+const hm = (minute) => String(Math.floor(minute / 60)).padStart(2, "0") + ":" + String(minute % 60).padStart(2, "0");
+function takeawayPlan() {
+  return state.plans.find((plan) => plan.id === selectedPlan) || state.plans.find((plan) => plan.id === "current") || state.plans[0];
+}
+function tripText(plan) {
+  return Object.keys(plan.cards).sort((a, b) => a - b).map((day) => {
+    var _a2, _b2;
+    const card = plan.cards[day], stops = ((_a2 = card.audit) == null ? void 0 : _a2.stops) || [];
+    const back = ((_b2 = card.contract) == null ? void 0 : _b2.destination) ? "，约 ".concat(hm(card.audit.arrival), " 回到").concat(card.contract.destination) : "";
+    return "第".concat(day, "天：") + stops.map((s) => "".concat(hm(s.start), " ").concat(s.place)).join(" → ") + back;
+  }).join("\n") + "\n—— 武汉接线台 · 江豚接待员排程（时间为估算，出发前核实开放与预约）";
+}
+function tripCalendar(plan, firstDay) {
+  var _a2, _b2;
+  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const esc = (text) => String(text).replace(/[\\;,]/g, (m) => "\\" + m).replace(/\n/g, "\\n");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//SAIG//Wuhan Switchboard//ZH", "CALSCALE:GREGORIAN", "X-WR-CALNAME:武汉行程"];
+  for (const day of Object.keys(plan.cards).sort((a, b) => a - b)) {
+    const date = new Date(firstDay.getTime() + (day - 1) * 864e5);
+    const ymd = date.getFullYear() + String(date.getMonth() + 1).padStart(2, "0") + String(date.getDate()).padStart(2, "0");
+    for (const [i, stop] of (((_a2 = plan.cards[day].audit) == null ? void 0 : _a2.stops) || []).entries()) {
+      const t = (minute) => ymd + "T" + hm(minute).replace(":", "") + "00";
+      lines.push(
+        "BEGIN:VEVENT",
+        "UID:saig-".concat(ymd, "-").concat(day, "-").concat(i, "-").concat(stamp, "@wuhan-switchboard"),
+        "DTSTAMP:" + stamp,
+        "DTSTART:" + t(stop.start),
+        "DTEND:" + t((_b2 = stop.end) != null ? _b2 : stop.start + 60),
+        "SUMMARY:" + esc(stop.place),
+        "LOCATION:" + esc("武汉 " + stop.place),
+        "DESCRIPTION:" + esc("第".concat(day, "天第").concat(i + 1, "站 · 导航：https://uri.amap.com/search?keyword=").concat(stop.place, "&city=武汉")),
+        "END:VEVENT"
+      );
+    }
+  }
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+function renderTakeaway() {
+  const bar = get("trip-takeaway"), plan = takeawayPlan();
+  if (!bar) return;
+  bar.hidden = !plan || !Object.keys(plan.cards || {}).length;
+  const input = get("trip-date");
+  if (!input.value) {
+    const tomorrow = new Date(Date.now() + 864e5);
+    input.value = tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
+  }
+}
+(_d = get("trip-ics")) == null ? void 0 : _d.addEventListener("click", () => {
+  const plan = takeawayPlan();
+  if (!plan) return;
+  const [y, m, d] = (get("trip-date").value || "").split("-").map(Number);
+  const first = y ? new Date(y, m - 1, d) : new Date(Date.now() + 864e5);
+  const link2 = document.createElement("a");
+  link2.href = URL.createObjectURL(new Blob([tripCalendar(plan, first)], { type: "text/calendar;charset=utf-8" }));
+  link2.download = "武汉行程.ics";
+  document.body.append(link2);
+  link2.click();
+  link2.remove();
+  setTimeout(() => URL.revokeObjectURL(link2.href), 4e3);
+});
+(_e = get("trip-copy")) == null ? void 0 : _e.addEventListener("click", async () => {
+  const plan = takeawayPlan(), button2 = get("trip-copy");
+  if (!plan) return;
+  const text = tripText(plan);
+  try {
+    await navigator.clipboard.writeText(text);
+    button2.textContent = "已复制 ✓";
+  } catch {
+    window.prompt("复制下面的行程：", text);
+  }
+  setTimeout(() => {
+    button2.textContent = "复制行程";
+  }, 1800);
+});
 function renderBoard() {
   updateMapLink();
+  renderTakeaway();
   drawBoardMap();
   get("board-summary").textContent = state.plans.length ? state.plans.length + " 份行程 · 可继续追问修改" : "查看路线和方案差异";
   const plans = get("plans");
@@ -643,10 +720,10 @@ function renderBoard() {
   get("save-comparison").hidden = activeTab !== "comparison" || !currentComparison();
 }
 function dayChanged(before, after) {
-  var _a2, _b2, _c2, _d;
+  var _a2, _b2, _c2, _d2;
   if (!before || !after) return false;
   const a = (((_a2 = before.audit) == null ? void 0 : _a2.stops) || []).map((s) => s.place + s.start).join(), b = (((_b2 = after.audit) == null ? void 0 : _b2.stops) || []).map((s) => s.place + s.start).join();
-  return a !== b || ((_c2 = before.audit) == null ? void 0 : _c2.arrival) !== ((_d = after.audit) == null ? void 0 : _d.arrival);
+  return a !== b || ((_c2 = before.audit) == null ? void 0 : _c2.arrival) !== ((_d2 = after.audit) == null ? void 0 : _d2.arrival);
 }
 function putPlan(id, title, cards, version, replannedDays = [], beforeCounts = {}) {
   const index = state.plans.findIndex((plan2) => plan2.id === id);
@@ -663,14 +740,14 @@ function putPlan(id, title, cards, version, replannedDays = [], beforeCounts = {
   else state.plans[index] = plan;
 }
 function updateBoard(result) {
-  var _a2, _b2, _c2, _d;
+  var _a2, _b2, _c2, _d2;
   for (const item of result.deliverables || []) {
     if (item.kind === "compare") state.comparison = item;
     if (item.status !== "passed" || !item.cards || !item.option_id || !["plan", "revise"].includes(item.kind)) continue;
     const previous = state.plans.find((plan) => plan.id === item.option_id);
     const beforeCounts = (item.replanned_days || []).reduce((counts, day) => {
-      var _a3, _b3, _c3, _d2;
-      counts[day] = (_d2 = (_c3 = (_b3 = (_a3 = previous == null ? void 0 : previous.cards) == null ? void 0 : _a3[day]) == null ? void 0 : _b3.audit) == null ? void 0 : _c3.stops) == null ? void 0 : _d2.length;
+      var _a3, _b3, _c3, _d3;
+      counts[day] = (_d3 = (_c3 = (_b3 = (_a3 = previous == null ? void 0 : previous.cards) == null ? void 0 : _a3[day]) == null ? void 0 : _b3.audit) == null ? void 0 : _c3.stops) == null ? void 0 : _d3.length;
       return counts;
     }, {});
     putPlan(item.option_id, (previous == null ? void 0 : previous.title) || item.title, item.cards, item.version || 1, item.replanned_days, beforeCounts);
@@ -689,7 +766,7 @@ function updateBoard(result) {
   }
   if (Object.keys(result.preview || {}).length) putPlan("preview", "试排方案", result.preview, 1);
   if (result.mode === "plan" || result.mode === "edit") state.plans = state.plans.filter((plan) => plan.id !== "preview");
-  if ((_d = result.deliverables) == null ? void 0 : _d.some((item) => item.kind === "adopt" && item.status === "passed")) {
+  if ((_d2 = result.deliverables) == null ? void 0 : _d2.some((item) => item.kind === "adopt" && item.status === "passed")) {
     showTab("plans");
     selectedPlan = "current";
   }
@@ -749,7 +826,9 @@ const stepLabel = (name, args = {}) => ({
   plan_trip: "排行程（计算交通与时间）",
   edit_trip: "调整第 " + (args.day || "?") + " 天行程",
   read_skill: "翻看接待手册",
-  remember: "记下你的信息"
+  remember: "记下你的信息",
+  get_weather: "查看武汉天气",
+  arrival_guide: "查接站路线" + (args.gateway ? "：" + args.gateway : "")
 })[name] || name;
 function liveStep(name, args) {
   const steps = get("work-steps");
@@ -807,9 +886,11 @@ async function streamChat(payload) {
       else if (kind === "delta") {
         text += data.text;
         liveText(text);
+        streamedReply = text.trim().length > 0;
       } else if (kind === "step_end" && !data.final) {
         text = "";
         liveText("");
+        streamedReply = false;
       }
     }
   }
@@ -835,6 +916,7 @@ async function sendPending() {
     tickSteps(elapsed);
   }, 250);
   try {
+    streamedReply = false;
     const payload = { query: pending.text, session: state.session, request_id: pending.id };
     let result = await streamChat(payload);
     if (!result) {
@@ -865,8 +947,9 @@ async function sendPending() {
     busy = false;
     save();
     render();
-    if (animateReply) typeReply();
+    if (animateReply && !streamedReply) typeReply();
     animateReply = false;
+    streamedReply = false;
   }
 }
 get("composer").addEventListener("submit", (event) => {

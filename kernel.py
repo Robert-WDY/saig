@@ -30,8 +30,13 @@ PERSONA = """你是「江豚接待员」——武汉数命 SPU 城市 AI 接待�
 介绍武汉；介绍数命 SPU 社区；规划和修改武汉行程；讲清数命 SPU 概念与 SAIG 比赛。
 
 工作方式：
-- 关于武汉、景点、美食、社区、SPU、SAIG 的任何事实，先用 search_knowledge 检索，回答里在对应句子末尾标 [S编号]。资料里没有的就直说「官方资料里没有记载」，并建议以官方渠道为准。绝不编造数字、日期、价格、开放时间、地址。
+- 先用 search_knowledge 检索，用到检索结果的句子末尾标 [S编号]。事实分两类处理：
+  · 会变或需要权威的信息——日期、价格、开放时间、地址、交通线路、预约规则，以及数命 SPU 社区和 SAIG 比赛的一切细节——只依据检索结果。查不到就说官方资料暂无，并告诉游客去哪里确认。绝不编造。
+  · 广为人知、长期稳定的城市常识——武汉话常用词和说法、饮食习惯、历史典故、文化背景、出行常识——资料不够时，用你自己的知识补充，讲得具体、生动、有用。这部分不标出处，用一句话自然地点明是「我知道的常识」，没把握的不说。
+- 不要只回一句「资料里没有」就结束。先给出你能确定的有用内容，再给下一步建议。像一位熟悉武汉、靠谱又有趣的本地朋友：例如问武汉话，就举几个常用词，配上意思和用法。
 - 排行程、改行程只能通过 plan_trip / edit_trip；行程中的时间与交通全部来自工具结果，照抄 summary_lines，不自己改时间。
+- 排行程、问「今天/明天去哪玩」「穿什么」「看日落夜景」时，先 get_weather 看真实天气：雨天优先室内，提醒带伞和穿衣，按日落时间安排江滩或长江大桥夜景，并在回答里用一句话提到天气。
+- 来宾问下了飞机或火车怎么走、怎么去会场或酒店时，用 arrival_guide 给出地铁线路和换乘，再提醒进出站和候车要另留时间。
 - 游客的说法不标准（如「光谷」「省博」「武大」）时，用 find_place 对上目录名称再排程。
 - 条件不全时用合理默认值先做出来，再告诉游客可以怎么调整；只有缺「几天」这种关键信息时才追问，一次最多问一个问题。
 - 游客说出称呼、住处、同行人、偏好、到达时间时，用 remember 记下。
@@ -190,7 +195,10 @@ class Kernel:
         guarded = False
         for step in range(MAX_STEPS):
             emit("step", {"step": step})
-            msg = self.chat(messages, TOOL_DEFS, on_delta=lambda d, s=step: emit("delta", {"step": s, "text": d}))
+            # Before any tool has run, a direct answer may still be sent back by the grounding guard,
+            # so hold its text and show it only once accepted; after tools, stream it live.
+            live = bool(trace)
+            msg = self.chat(messages, TOOL_DEFS, on_delta=(lambda d, s=step: emit("delta", {"step": s, "text": d})) if live else None)
             calls = msg.get("tool_calls") or []
             if not calls:
                 # Grounding guard: a substantive answer that used no tool and cites nothing is not
@@ -204,6 +212,8 @@ class Kernel:
                     trace.append({"step": "grounding_retry"})
                     continue
                 final = text
+                if not live and text:
+                    emit("delta", {"step": step, "text": text})
                 emit("step_end", {"step": step, "final": True})
                 break
             emit("step_end", {"step": step, "final": False})

@@ -16,7 +16,8 @@ from knowledge import TOOLS as TOPICS
 from places import PLACES, ATLAS
 from planning import Invalid
 from trip_contract import GUIDES, trip_review
-from transport import ACCESS, snapshot
+from transport import ACCESS, metro_route, snapshot
+from weather import forecast
 
 SKILL_DIR = Path(__file__).parent / "skills"
 WRITE_TOOLS = {"plan_trip", "edit_trip", "remember", "multi_plan"}
@@ -67,6 +68,12 @@ def _metro(name):
     return {"station": station + "站", "lines": lines}
 
 
+GATEWAYS = {"天河机场": "天河机场", "汉口站": "汉口火车站", "武汉站": "武汉火车站", "武昌站": "武昌火车站"}
+# Official community material: the 智民里 venue is by 江汉路站 (lines 2/6) and 大智路站 (lines 1/6).
+VENUE_STATIONS = {"智民里": "江汉路", "数命SPU社区": "江汉路"}
+METRO_STATIONS = {s for stops in snapshot("metro_lines.json")["lines"].values() for s in stops}
+
+
 def day_lines(days):
     out = []
     for key in sorted(days, key=int):
@@ -94,6 +101,15 @@ SCHEMAS = {
         "description": "查地点：是否可排进行程、所在片区、建议停留时长、最近地铁站和导航链接。游客说的名字不标准时（如「光谷」「省博」）也用它找到目录里的正式名称。",
         "parameters": {"type": "object", "additionalProperties": False, "required": ["name"],
                        "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 40}}}},
+    "get_weather": {
+        "description": "查武汉实时天气和未来几天预报（天气、最高/最低气温、风、日出日落、空气质量）。排行程、问穿衣、问适合去哪玩、问看日落夜景时使用：下雨就优先室内（省博、美术馆、商场街区），日落时间决定江滩/长江大桥看夜景的时点。",
+        "parameters": {"type": "object", "additionalProperties": False, "properties": {
+            "days": {"type": "integer", "minimum": 1, "maximum": 7, "description": "要看几天，默认 3"}}}},
+    "arrival_guide": {
+        "description": "到达武汉的接站指引：从天河机场 / 汉口站 / 武汉站 / 武昌站坐地铁到目的地（会场智民里、酒店附近地标或景点）的线路、换乘和大致时间。来宾问「下了飞机/火车怎么去」时使用。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["gateway"], "properties": {
+            "gateway": {"type": "string", "enum": ["天河机场", "汉口站", "武汉站", "武昌站"]},
+            "destination": {"type": "string", "maxLength": 40, "description": "目的地，默认智民里（SAIG 线下赛会场）"}}}},
     "get_trip": {
         "description": "读取本会话当前的正式行程（每天的站点、时间、起止点）。修改行程前、或游客问「我的行程」时使用。",
         "parameters": {"type": "object", "additionalProperties": False, "properties": {}}},
@@ -205,6 +221,35 @@ class Toolbox:
             found = [{"name": r["name"], "plannable": False, "area": r.get("district"), "note": "在地图目录中，可浏览，暂不能自动排程"} for r in atlas]
         self.trace.append({"tool": "location", "query": name, "result": [f["name"] for f in found]})
         return {"ok": True, "exact": bool(hit), "places": found}
+
+    def get_weather(self, days=3):
+        data = forecast()
+        if not data:
+            return {"ok": False, "error": "天气服务暂时连不上", "hint": "如实告诉游客暂时查不到天气，建议出发前看手机天气。"}
+        self.trace.append({"tool": "weather", "query": f"{days} 天"})
+        return {"ok": True, "now": data["now"], "days": data["days"][:days], "source": data["source"],
+                "note": "天气是预报，可能变化；不要编造预报里没有的数据。"}
+
+    def arrival_guide(self, gateway, destination="智民里"):
+        hit, _ = resolve(destination or "智民里")
+        place = hit or (destination or "").strip() or "智民里"
+        target = VENUE_STATIONS.get(place) or ACCESS.get(place)
+        if not target and destination and destination.rstrip("站") in METRO_STATIONS:
+            place, target = destination, destination.rstrip("站")
+        if not target:
+            return {"ok": False, "error": f"没找到「{destination}」附近的地铁站", "hint": "可以先用 find_place 确认地点名称。"}
+        start = GATEWAYS[gateway]
+        route = metro_route(start, target)
+        if not route:
+            return {"ok": False, "error": f"{gateway}到{target}站暂时算不出地铁线路"}
+        minutes, hops = route
+        name = lambda st: st if st.endswith("站") else st + "站"
+        legs = [f"{name(hops[0][0])}上{hops[0][1]}"] + [f"在{name(st)}换乘{line}" for st, line in hops[1:]]
+        self.trace.append({"tool": "arrival", "query": f"{gateway}→{place}"})
+        return {"ok": True, "from": gateway, "to": place, "metro_steps": legs, "get_off": name(target),
+                "transfers": len(hops) - 1, "metro_minutes_estimate": minutes,
+                "map_url": f"https://uri.amap.com/search?keyword={place}&city=武汉",
+                "note": "地铁时间是按站数估算的车上时间，不含进出站和候车（另加 10–20 分钟）。票价、末班车时间资料里没有，不要编。行李多或深夜到达可建议打车，但不要给具体车费。"}
 
     def get_trip(self):
         days = self.draft.get("days") or {}

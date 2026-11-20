@@ -159,3 +159,26 @@ class PublicTrialTests(unittest.TestCase):
             limited = http.post(base + "/chat", json={"session": "1" * 32, "query": "q3", "request_id": "r3"}, headers=headers, timeout=3)
             self.assertEqual(limited.status_code, 429)
             self.assertIn("太快", limited.json()["error"])
+
+
+class VisitorToolsTests(KernelTests):
+    def test_arrival_guide_routes_gateways_and_rejects_unknown(self):
+        box = Toolbox(self.agent, {"days": {}}, [])
+        r = box.call("arrival_guide", {"gateway": "天河机场"})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["get_off"], "江汉路站")
+        self.assertEqual(r["transfers"], 0)
+        r = box.call("arrival_guide", {"gateway": "汉口站", "destination": "黄鹤楼"})
+        self.assertEqual(r["metro_steps"][0], "汉口火车站上2号线")
+        self.assertFalse(box.call("arrival_guide", {"gateway": "天河机场", "destination": "火星"})["ok"])
+        self.assertFalse(box.call("arrival_guide", {"gateway": "光谷"})["ok"])
+
+    def test_weather_failure_is_reported_not_invented(self):
+        from unittest.mock import patch
+        box = Toolbox(self.agent, {"days": {}}, [])
+        with patch("kernel_tools.forecast", return_value=None):
+            self.assertFalse(box.call("get_weather", {})["ok"])
+        fake = {"now": {"temp_c": 9.0}, "days": [{"date": "2026-11-21", "weather": "小雨"}] * 5, "source": "test"}
+        with patch("kernel_tools.forecast", return_value=fake):
+            r = box.call("get_weather", {"days": 2})
+        self.assertEqual(len(r["days"]), 2)

@@ -72,7 +72,7 @@ for tile in (WEB_DIR / "island").glob("*.svg"):
 
 
 TOPIC_LABELS={"wuhan":"介绍武汉","attraction":"武汉景点","food":"武汉美食","community":"数命 SPU 社区",
-              "spu":"数命 SPU","saig":"SAIG 大赛","guide":"旅游规划","location":"位置"}
+              "spu":"数命 SPU","saig":"SAIG 大赛","guide":"旅游规划","location":"位置","weather":"武汉天气","arrival":"接站指引"}
 def reply_topics(result):
     """Label which contest function answered; computed before the public build drops the trace."""
     found=[]

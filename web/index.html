@@ -109,6 +109,12 @@
           <div id="board-map-canvas" aria-label="当天游览路线地图"></div>
           <div class="board-map-bar"><strong id="board-map-label"></strong><a id="board-map-open" href="/city">在武汉地图展开 ↗</a></div>
         </div>
+        <div id="trip-takeaway" class="trip-takeaway" hidden>
+          <strong>带走这份行程</strong>
+          <label>第 1 天 <input type="date" id="trip-date"></label>
+          <button id="trip-ics" class="text-button" type="button">加到手机日历</button>
+          <button id="trip-copy" class="text-button" type="button" aria-live="polite">复制行程</button>
+        </div>
         <div id="plans" class="board-content" role="tabpanel" aria-labelledby="plans-tab" tabindex="0"></div>
         <div id="comparison" class="board-content" role="tabpanel" aria-labelledby="comparison-tab" tabindex="0" hidden></div>
       </section>

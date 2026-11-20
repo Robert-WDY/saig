@@ -14,6 +14,7 @@ let activeTab = "plans";
 let selectedPlan = state.mapSelection?.plan || state.plans[0]?.id || "";
 let openDay = state.mapSelection?.day || "1";
 let animateReply = false;
+let streamedReply = false; // reply text already shown live; don't retype it
 
 function restore() {
   try {
@@ -587,8 +588,69 @@ async function drawBoardMap() {
   if (stops.length) boardMap.fitBounds(L.latLngBounds(stops.map(s => s.coords)), {paddingTopLeft: [26, 26], paddingBottomRight: [26, 46], maxZoom: 14.2, animate: false});
 }
 
+// Take the trip away: phone calendar (.ics, one event per stop) or plain text for WeChat.
+const hm = minute => String(Math.floor(minute / 60)).padStart(2, "0") + ":" + String(minute % 60).padStart(2, "0");
+function takeawayPlan() {
+  return state.plans.find(plan => plan.id === selectedPlan) || state.plans.find(plan => plan.id === "current") || state.plans[0];
+}
+function tripText(plan) {
+  return Object.keys(plan.cards).sort((a, b) => a - b).map(day => {
+    const card = plan.cards[day], stops = card.audit?.stops || [];
+    const back = card.contract?.destination ? `，约 ${hm(card.audit.arrival)} 回到${card.contract.destination}` : "";
+    return `第${day}天：` + stops.map(s => `${hm(s.start)} ${s.place}`).join(" → ") + back;
+  }).join("\n") + "\n—— 武汉接线台 · 江豚接待员排程（时间为估算，出发前核实开放与预约）";
+}
+function tripCalendar(plan, firstDay) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const esc = text => String(text).replace(/[\\;,]/g, m => "\\" + m).replace(/\n/g, "\\n");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//SAIG//Wuhan Switchboard//ZH", "CALSCALE:GREGORIAN", "X-WR-CALNAME:武汉行程"];
+  for (const day of Object.keys(plan.cards).sort((a, b) => a - b)) {
+    const date = new Date(firstDay.getTime() + (day - 1) * 86400000);
+    const ymd = date.getFullYear() + String(date.getMonth() + 1).padStart(2, "0") + String(date.getDate()).padStart(2, "0");
+    for (const [i, stop] of (plan.cards[day].audit?.stops || []).entries()) {
+      const t = minute => ymd + "T" + hm(minute).replace(":", "") + "00";
+      lines.push("BEGIN:VEVENT", `UID:saig-${ymd}-${day}-${i}-${stamp}@wuhan-switchboard`, "DTSTAMP:" + stamp,
+        "DTSTART:" + t(stop.start), "DTEND:" + t(stop.end ?? stop.start + 60), "SUMMARY:" + esc(stop.place),
+        "LOCATION:" + esc("武汉 " + stop.place),
+        "DESCRIPTION:" + esc(`第${day}天第${i + 1}站 · 导航：https://uri.amap.com/search?keyword=${stop.place}&city=武汉`), "END:VEVENT");
+    }
+  }
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+function renderTakeaway() {
+  const bar = get("trip-takeaway"), plan = takeawayPlan();
+  if (!bar) return;
+  bar.hidden = !plan || !Object.keys(plan.cards || {}).length;
+  const input = get("trip-date");
+  if (!input.value) {
+    const tomorrow = new Date(Date.now() + 86400000);
+    input.value = tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
+  }
+}
+get("trip-ics")?.addEventListener("click", () => {
+  const plan = takeawayPlan();
+  if (!plan) return;
+  const [y, m, d] = (get("trip-date").value || "").split("-").map(Number);
+  const first = y ? new Date(y, m - 1, d) : new Date(Date.now() + 86400000);
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([tripCalendar(plan, first)], {type: "text/calendar;charset=utf-8"}));
+  link.download = "武汉行程.ics";
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+});
+get("trip-copy")?.addEventListener("click", async () => {
+  const plan = takeawayPlan(), button = get("trip-copy");
+  if (!plan) return;
+  const text = tripText(plan);
+  try { await navigator.clipboard.writeText(text); button.textContent = "已复制 ✓"; }
+  catch { window.prompt("复制下面的行程：", text); }
+  setTimeout(() => { button.textContent = "复制行程"; }, 1800);
+});
+
 function renderBoard() {
   updateMapLink();
+  renderTakeaway();
   drawBoardMap();
   get("board-summary").textContent = state.plans.length ? state.plans.length + " 份行程 · 可继续追问修改" : "查看路线和方案差异";
   const plans = get("plans");
@@ -716,7 +778,8 @@ const stepLabel = (name, args = {}) => ({
   search_knowledge: "检索官方资料" + (args.query ? "：" + args.query : ""),
   read_source: "读原文", find_place: "查地点" + (args.name ? "：" + args.name : ""),
   get_trip: "读取当前行程", plan_trip: "排行程（计算交通与时间）", edit_trip: "调整第 " + (args.day || "?") + " 天行程",
-  read_skill: "翻看接待手册", remember: "记下你的信息"
+  read_skill: "翻看接待手册", remember: "记下你的信息",
+  get_weather: "查看武汉天气", arrival_guide: "查接站路线" + (args.gateway ? "：" + args.gateway : "")
 })[name] || name;
 function liveStep(name, args) {
   const steps = get("work-steps");
@@ -759,8 +822,8 @@ async function streamChat(payload) {
       else if (kind === "tool") current = liveStep(data.name, data.args);
       else if (kind === "tool_done" && current) { current.className = data.ok ? "done" : "failed"; current = null; }
       else if (kind === "step") text = "";
-      else if (kind === "delta") { text += data.text; liveText(text); }
-      else if (kind === "step_end" && !data.final) { text = ""; liveText(""); }
+      else if (kind === "delta") { text += data.text; liveText(text); streamedReply = text.trim().length > 0; }
+      else if (kind === "step_end" && !data.final) { text = ""; liveText(""); streamedReply = false; }
     }
   }
   if (!result) throw new TypeError("stream ended early");
@@ -783,6 +846,7 @@ async function sendPending() {
     tickSteps(elapsed);
   }, 250);
   try {
+    streamedReply = false;
     const payload = {query: pending.text, session: state.session, request_id: pending.id};
     let result = await streamChat(payload);
     if (!result) {
@@ -810,8 +874,9 @@ async function sendPending() {
     busy = false;
     save();
     render();
-    if (animateReply) typeReply();
+    if (animateReply && !streamedReply) typeReply();
     animateReply = false;
+    streamedReply = false;
   }
 }
 

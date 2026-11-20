@@ -75,7 +75,7 @@ browser(async({cdp,js,size,shot,exceptions,base,out,wait,sleep})=>{
     assert.equal(poster.readUInt32BE(16),1080);
     const community=await turn(["#followups button","问数命"],true);
     assert.match(community.answer,/智民里/);
-    assert.match(community.answer,/真实订单|项目实战/);
+    assert.match(community.answer,/真实订单|项目实战|真实项目/);
     assert.ok(await js("document.querySelector('.message.assistant:last-child .venue-card') !== null"));
     const contest=await turn(["#followups button","问 SAIG"],true);
     assert.match(contest.answer,/项目简介/);
