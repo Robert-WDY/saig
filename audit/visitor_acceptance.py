@@ -15,6 +15,19 @@ import requests
 
 
 CASES = {
+    "map_supersedes_preview": [
+        "@map_create",
+        "巴公房子如果不逛，可以先给我看看路线会变成什么样吗？我还没决定。",
+        "@map_replace",
+        "最后以我刚刚在地图里点保存的版本为准。朋友等我发路线，帮我照顺序念一遍。",
+    ],
+    "pickup_station_change": [
+        "周二想从江汉路出发逛黎黄陂路，早上九点动身，下午四点半以前到武汉站接姐姐。",
+        "我把车票看反了，她下车是在汉口站。只换接人的车站，时间照旧，已经定好的景点都留着。",
+    ],
+    "two_scoped_initial": [
+        "我们一家在选两种玩法，想分别存好再做决定。爸妈的一日游要十点以后再出发。我那份是两日游，第二天下午三点前要到汉口站接人。各自排好，顺便说说两种走法有什么区别。",
+    ],
     "preview_after_other_question": [
         "@map_create",
         "有朋友来不了，我在考虑把巴公房子省掉。能先看看少去一站是什么样吗？别定下来。",
@@ -82,6 +95,9 @@ CASES = {
     ],
 }
 EXPECTATIONS = {
+    "map_supersedes_preview": "Preview removes 巴公房子. Saving the map then replaces 江汉关 with 吉庆街. Read the current map card in order, with no pending older preview.",
+    "pickup_station_change": "Replace only the pickup destination 武汉站 -> 汉口站. Both cards retain same visiting stops, origin, start and <=16:30 deadline.",
+    "two_scoped_initial": "Deliver independent 1- and 2-day options and their versioned comparison. First option starts >=10; only long option day 2 has 15:00 汉口站 pickup.",
     "preview_after_other_question": "Unrelated breakfast question is answered, keeps preview pending; subsequent adoption exactly matches the previously shown route.",
     "walk_check_then_replan": "Hard endpoint and time retained. Consultation preserves card. Confirmed change must have walking evidence <=400m per leg, or keep original card.",
     "map_adopt": "Original map card survives preview and readback; explicitly adopted card exactly matches the preview.",

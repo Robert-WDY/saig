@@ -14,6 +14,31 @@ def score(case, turns):
         return card.get("contract", {}).get("destination") == target and card["audit"]["arrival"] <= deadline
     def has_reference(r, id):
         return any(c.get("id") == id for c in r.get("citations", []))
+    if case == "map_supersedes_preview":
+        current = results[2]["cards"]["1"]
+        answer = results[3]["answer"]
+        positions = [answer.find(n) for n in current["order"]]
+        return {"preview_diff": "巴公房子" not in results[1]["preview"]["1"]["order"],
+                "latest_map": set(current["order"]) == {"吉庆街", "黎黄陂路", "巴公房子"},
+                "actual_card": read_day(3) == current and results[3].get("has_pending_preview") is False,
+                "correct_readback": min(positions) >= 0 and sorted(positions) == positions}
+    if case == "pickup_station_change":
+        old, new = read_day(0), read_day(1)
+        return {"initial_pickup": arrival(old, "武汉站", 990), "revised_pickup": arrival(new, "汉口站", 990),
+                "preserved_window": (new["contract"]["start"],new["contract"]["end"],new["contract"]["origin"])
+                                      == (old["contract"]["start"],old["contract"]["end"],old["contract"]["origin"])
+                                      == (540,990,"江汉路"),
+                "preserved_visits": set(old["order"]) == set(new["order"]) and "黎黄陂路" in new["order"]}
+    if case == "two_scoped_initial":
+        rows = results[0]["deliverables"]
+        a, b = sorted([r for r in rows if r.get("cards")], key=lambda r: len(r["cards"]))
+        comparison = next(r for r in rows if r["kind"] == "compare")
+        return {"two_sizes": [len(a["cards"]),len(b["cards"])] == [1,2],
+                "parents_late_start": a["cards"]["1"]["contract"]["start"] >= 600,
+                "only_second_day_pickup": arrival(b["cards"]["2"], "汉口站", 900) and all(
+                    c["contract"].get("destination") != "汉口站" for c in [a["cards"]["1"], b["cards"]["1"]]),
+                "current_versions": {v["option_id"]:v["version"] for v in comparison["versions"]}
+                                    == {r["option_id"]:r["version"] for r in [a,b]}}
     if case == "preview_after_other_question":
         proposed = results[1]["preview"]["1"]
         return {"actual_preview": set(proposed["order"]) == {"江汉关","黎黄陂路"},
