@@ -1,5 +1,5 @@
 "use strict";
-var _a, _b, _c, _d, _e, _f;
+var _a, _b, _c, _d, _e, _f, _g;
 const get = (id) => document.getElementById(id);
 const question = get("question");
 const chatWindow = get("chat-window");
@@ -477,7 +477,7 @@ function stopChange(stop, before, contract) {
   };
 }
 function daySection(number, day, open, before = null) {
-  var _a2, _b2, _c2, _d2, _e2, _f2, _g;
+  var _a2, _b2, _c2, _d2, _e2, _f2, _g2;
   const details = node("details", before ? "day-card has-changes" : "day-card");
   details.open = open;
   const stops = ((_a2 = day.audit) == null ? void 0 : _a2.stops) || [];
@@ -523,7 +523,7 @@ function daySection(number, day, open, before = null) {
       arrival,
       lastWhere(legs, (item) => item.destination === contract.destination),
       true,
-      routeTime.exact((_g = day.audit) == null ? void 0 : _g.arrival)
+      routeTime.exact((_g2 = day.audit) == null ? void 0 : _g2.arrival)
     ));
   }
   details.append(summary, list);
@@ -534,7 +534,7 @@ function daySection(number, day, open, before = null) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b2, _c2, _d2, _e2, _f2, _g;
+  var _a2, _b2, _c2, _d2, _e2, _f2, _g2;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
@@ -571,7 +571,7 @@ function planCard(plan) {
     content.append(summary);
   }
   for (const [day, details] of Object.entries(plan.cards)) {
-    const before = ((_f2 = plan.changedDays) == null ? void 0 : _f2.includes(day)) ? (_g = plan.previous) == null ? void 0 : _g[day] : null;
+    const before = ((_f2 = plan.changedDays) == null ? void 0 : _f2.includes(day)) ? (_g2 = plan.previous) == null ? void 0 : _g2[day] : null;
     const section = daySection(day, details, day === openDay, before);
     section.addEventListener("toggle", () => {
       if (section.isConnected && section.open) {
@@ -712,10 +712,13 @@ function tripCalendar(plan, firstDay) {
   return lines.join("\r\n");
 }
 function renderTakeaway() {
+  var _a2, _b2;
   const bar = get("trip-takeaway"), plan = takeawayPlan();
   if (!bar) return;
   bar.hidden = !plan || !Object.keys(plan.cards || {}).length;
   const input = get("trip-date");
+  const fixed = plan && ((_b2 = (_a2 = Object.values(plan.cards || {})[0]) == null ? void 0 : _a2.contract) == null ? void 0 : _b2.date);
+  if (fixed && plan.id === "preview") input.value = fixed;
   if (!input.value) {
     const tomorrow = new Date(Date.now() + 864e5);
     input.value = tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
@@ -734,7 +737,34 @@ function renderTakeaway() {
   link2.remove();
   setTimeout(() => URL.revokeObjectURL(link2.href), 4e3);
 });
-(_e = get("trip-amap")) == null ? void 0 : _e.addEventListener("click", async () => {
+function askNowPlan(place) {
+  if (place) return sendText("我现在在".concat(place, "附近，接下来 3 小时怎么安排？"));
+  const template = "我现在在附近，接下来 3 小时怎么安排？";
+  question.value = template;
+  resizeInput();
+  question.focus();
+  const at = template.indexOf("附近");
+  question.setSelectionRange(at, at);
+  get("progress").textContent = "先填上你现在所在的地铁站或地标";
+}
+(_e = get("now-plan")) == null ? void 0 : _e.addEventListener("click", async () => {
+  if (state.pending) return;
+  if (!window.isSecureContext || !navigator.geolocation) return askNowPlan();
+  get("progress").textContent = "正在获取你的位置…";
+  if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const { latitude: lat, longitude: lon } = pos.coords;
+    let best = null;
+    for (const [name, p] of Object.entries(routePoints || {})) {
+      if (!Number.isFinite(p == null ? void 0 : p.lat)) continue;
+      const d = Math.hypot((p.lat - lat) * 111, (p.lon - lon) * 96);
+      if (!best || d < best.d) best = { name, d };
+    }
+    get("progress").textContent = "";
+    askNowPlan(best && best.d < 6 ? best.name : null);
+  }, () => askNowPlan(), { timeout: 8e3, maximumAge: 3e5 });
+});
+(_f = get("trip-amap")) == null ? void 0 : _f.addEventListener("click", async () => {
   const plan = takeawayPlan();
   if (!plan) return;
   if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
@@ -742,18 +772,19 @@ function renderTakeaway() {
   const url = Amap.day(plan.cards[day]);
   if (url) window.open(url, "_blank", "noopener");
 });
-(_f = get("trip-copy")) == null ? void 0 : _f.addEventListener("click", async () => {
+(_g = get("trip-copy")) == null ? void 0 : _g.addEventListener("click", async () => {
   const plan = takeawayPlan(), button2 = get("trip-copy");
   if (!plan) return;
   const text = tripText(plan);
+  const label = button2.querySelector("span");
   try {
     await navigator.clipboard.writeText(text);
-    button2.textContent = "已复制 ✓";
+    label.textContent = "已复制";
   } catch {
     window.prompt("复制下面的行程：", text);
   }
   setTimeout(() => {
-    button2.textContent = "复制行程";
+    label.textContent = "复制文字";
   }, 1800);
 });
 function renderBoard() {
@@ -828,7 +859,13 @@ function updateBoard(result) {
       openDay = String(current.replannedDays[0]);
     }
   }
-  if (Object.keys(result.preview || {}).length) putPlan("preview", "试排方案", result.preview, 1);
+  if (Object.keys(result.preview || {}).length) {
+    putPlan("preview", result.preview_title || "试排方案", result.preview, 1);
+    if (result.preview_title) {
+      selectedPlan = "preview";
+      openDay = "1";
+    }
+  }
   if (result.mode === "plan" || result.mode === "edit") state.plans = state.plans.filter((plan) => plan.id !== "preview");
   if ((_d2 = result.deliverables) == null ? void 0 : _d2.some((item) => item.kind === "adopt" && item.status === "passed")) {
     showTab("plans");

@@ -247,3 +247,22 @@ class HoursMealsCrossDayTests(KernelTests):
         self.assertTrue(r["ok"], r)
         self.assertEqual(sorted(draft["days"]["1"]["order"]), sorted(before[1]))
         self.assertEqual(sorted(draft["days"]["2"]["order"]), sorted(before[0]))
+
+
+class RightNowTests(KernelTests):
+    def test_plan_now_and_nearby_from_a_station(self):
+        box = Toolbox(self.agent, {"days": {}}, [])
+        box._now = lambda: ("2026-11-24", 14 * 60 + 10)
+        r = box.call("plan_now", {"location": "司门口", "hours": 3})
+        self.assertTrue(r["ok"], r)
+        self.assertTrue(r["summary_line"].startswith("今天 14:15 从司门口出发"))
+        self.assertIn("1", box.preview)
+        self.assertEqual(box.mode, "preview")
+        n = box.call("nearby", {"location": "黄鹤楼", "exclude": ["湖北省博物馆"]})
+        self.assertTrue(n["ok"] and n["places"] and all(p["open_now"] for p in n["places"]))
+        self.assertFalse(box.call("plan_now", {"location": "火星"})["ok"])
+
+    def test_plan_now_late_evening_declines(self):
+        box = Toolbox(self.agent, {"days": {}}, [])
+        box._now = lambda: ("2026-11-24", 21 * 60 + 30)
+        self.assertFalse(box.call("plan_now", {"location": "江汉路"})["ok"])

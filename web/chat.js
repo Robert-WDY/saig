@@ -667,6 +667,8 @@ function renderTakeaway() {
   if (!bar) return;
   bar.hidden = !plan || !Object.keys(plan.cards || {}).length;
   const input = get("trip-date");
+  const fixed = plan && Object.values(plan.cards || {})[0]?.contract?.date;
+  if (fixed && plan.id === "preview") input.value = fixed;
   if (!input.value) {
     const tomorrow = new Date(Date.now() + 86400000);
     input.value = tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
@@ -683,6 +685,35 @@ get("trip-ics")?.addEventListener("click", () => {
   document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(link.href), 4000);
 });
+// Right-now plan: needs where the visitor is. Use the browser location when allowed (HTTPS), else ask.
+function askNowPlan(place) {
+  if (place) return sendText(`我现在在${place}附近，接下来 3 小时怎么安排？`);
+  const template = "我现在在附近，接下来 3 小时怎么安排？";
+  question.value = template;
+  resizeInput();
+  question.focus();
+  const at = template.indexOf("附近");
+  question.setSelectionRange(at, at);
+  get("progress").textContent = "先填上你现在所在的地铁站或地标";
+}
+get("now-plan")?.addEventListener("click", async () => {
+  if (state.pending) return;
+  if (!window.isSecureContext || !navigator.geolocation) return askNowPlan();
+  get("progress").textContent = "正在获取你的位置…";
+  if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
+  navigator.geolocation.getCurrentPosition(pos => {
+    const {latitude: lat, longitude: lon} = pos.coords;
+    let best = null;
+    for (const [name, p] of Object.entries(routePoints || {})) {
+      if (!Number.isFinite(p?.lat)) continue;
+      const d = Math.hypot((p.lat - lat) * 111, (p.lon - lon) * 96);
+      if (!best || d < best.d) best = {name, d};
+    }
+    get("progress").textContent = "";
+    askNowPlan(best && best.d < 6 ? best.name : null);
+  }, () => askNowPlan(), {timeout: 8000, maximumAge: 300000});
+});
+
 get("trip-amap")?.addEventListener("click", async () => {
   const plan = takeawayPlan();
   if (!plan) return;
@@ -695,9 +726,10 @@ get("trip-copy")?.addEventListener("click", async () => {
   const plan = takeawayPlan(), button = get("trip-copy");
   if (!plan) return;
   const text = tripText(plan);
-  try { await navigator.clipboard.writeText(text); button.textContent = "已复制 ✓"; }
+  const label = button.querySelector("span");
+  try { await navigator.clipboard.writeText(text); label.textContent = "已复制"; }
   catch { window.prompt("复制下面的行程：", text); }
-  setTimeout(() => { button.textContent = "复制行程"; }, 1800);
+  setTimeout(() => { label.textContent = "复制文字"; }, 1800);
 });
 
 function renderBoard() {
@@ -765,7 +797,10 @@ function updateBoard(result) {
       openDay = String(current.replannedDays[0]);
     }
   }
-  if (Object.keys(result.preview || {}).length) putPlan("preview", "试排方案", result.preview, 1);
+  if (Object.keys(result.preview || {}).length) {
+    putPlan("preview", result.preview_title || "试排方案", result.preview, 1);
+    if (result.preview_title) { selectedPlan = "preview"; openDay = "1"; }
+  }
   if (result.mode === "plan" || result.mode === "edit") state.plans = state.plans.filter(plan => plan.id !== "preview");
   if (result.deliverables?.some(item => item.kind === "adopt" && item.status === "passed")) {
     showTab("plans");

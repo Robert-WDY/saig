@@ -17,7 +17,9 @@ from places import PLACES, ATLAS
 from planning import Invalid
 from trip_contract import GUIDES, trip_review
 from datetime import date as _date, timedelta as _td
-from planning import HOURS, WEEKDAYS, WEEKDAY_CN, window_of
+from planning import HOURS, WEEKDAYS, WEEKDAY_CN, window_of, closed_on, evaluate, new_contract, reorder
+from datetime import datetime as _dt, timezone as _tz
+from itertools import combinations as _combos
 from transport import ACCESS, metro_route, snapshot, straight_km
 from weather import forecast
 
@@ -159,6 +161,20 @@ SCHEMAS = {
         "parameters": {"type": "object", "additionalProperties": False, "required": ["gateway"], "properties": {
             "gateway": {"type": "string", "enum": ["天河机场", "汉口站", "武汉站", "武昌站"]},
             "destination": {"type": "string", "maxLength": 40, "description": "目的地，默认智民里（SAIG 线下赛会场）"}}}},
+    "nearby": {
+        "description": "查某个位置附近此刻（或指定时间）开着、可以去的地方，按距离排，含开放时间和是否需要预约。游客说「X 关门了/去不了，附近还有什么」「我在 X，附近有什么好玩/好吃的」时使用。不知道游客在哪就先问位置。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["location"], "properties": {
+            "location": {"type": "string", "minLength": 1, "maxLength": 40, "description": "游客现在所在的地点、地铁站或地标"},
+            "kind": {"type": "string", "enum": ["any", "sight", "food", "indoor"], "description": "想找什么：景点 / 吃的 / 室内（下雨时）"},
+            "exclude": {"type": "array", "maxItems": 8, "items": {"type": "string"}, "description": "排除的地点（如刚关门的那个）"}}}},
+    "plan_now": {
+        "description": "临时安排：从游客现在的位置出发，按此刻时间和当天的开放时间，排接下来几个小时（如「接下来 3 小时怎么玩」「下午还有半天」）。结果放在行程板的「临时安排」里，不覆盖正式行程。不知道游客在哪就先问位置，不要猜。",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["location"], "properties": {
+            "location": {"type": "string", "minLength": 1, "maxLength": 40},
+            "hours": {"type": "number", "minimum": 1, "maximum": 8, "description": "可用小时数，默认 3"},
+            "kind": {"type": "string", "enum": ["any", "sight", "food", "indoor"]},
+            "end_at": {"type": "string", "description": "最后要到达的地点（可选，如酒店、车站）"},
+            "exclude": {"type": "array", "maxItems": 8, "items": {"type": "string"}}}}},
     "get_trip": {
         "description": "读取本会话当前的正式行程（每天的站点、时间、起止点）。修改行程前、或游客问「我的行程」时使用。",
         "parameters": {"type": "object", "additionalProperties": False, "properties": {}}},
@@ -226,6 +242,7 @@ class Toolbox:
         self.agent, self.draft, self.trace = agent, draft, trace
         self.refs = {}
         self.mode = None
+        self.preview = None
         self.deliverables = None
 
     # ── dispatch ──────────────────────────────────────────────────────────
@@ -307,6 +324,99 @@ class Toolbox:
                 "transfers": len(hops) - 1, "metro_minutes_estimate": minutes,
                 "map_url": f"https://uri.amap.com/search?keyword={place}&city=武汉",
                 "note": "地铁时间是按站数估算的车上时间，不含进出站和候车（另加 10–20 分钟）。票价、末班车时间资料里没有，不要编。行李多或深夜到达可建议打车，但不要给具体车费。"}
+
+    # ── right-now recommendations ─────────────────────────────────────────
+    def _here(self, location):
+        hit, near = resolve(location)
+        if hit:
+            return hit
+        station = location.strip().rstrip("站")
+        stops = [n for n, st in ACCESS.items() if n in PLACES and station and (st == station or station in st)]
+        if stops:
+            return stops[0]
+        raise Invalid(f"没认出「{location}」在哪。" + (f"是不是 {'、'.join(near)}？" if near else "") + "请告诉游客说一个附近的地铁站或地标。")
+
+    def _candidates(self, here, kind, exclude, now_min, today, radius=5.0):
+        c = {**new_contract(), "date": today}
+        out = []
+        for n, p in PLACES.items():
+            if not p.get("minutes") or n == here or n in exclude or n in ("智民里",):
+                continue
+            if kind == "food" and n not in FOOD:
+                continue
+            if kind == "sight" and n in FOOD:
+                continue
+            if kind == "indoor" and not (HOURS.get(n, {}).get("open") and not HOURS[n].get("all_day")) and "博物馆" not in n and "美术馆" not in n:
+                continue
+            km = straight_km(here, n)
+            if km is None or km > radius:
+                continue
+            lo, hi = window_of(c, n)
+            last = HOURS.get(n, {}).get("last_entry")
+            shut = closed_on(c, n)
+            open_now = not shut and lo <= now_min + 20 and now_min < hi - 30 and (not last or now_min <= _clock(last))
+            out.append({"name": n, "km": round(km, 1), "open_now": open_now, "closed_today": bool(shut),
+                        "hours": None if not HOURS.get(n) else ("全天开放" if HOURS[n].get("all_day") else f"{HOURS[n]['open']}—{HOURS[n]['close']}"),
+                        "booking": bool(HOURS.get(n, {}).get("booking")), "suggested_minutes": p["minutes"], "metro": _metro(n)})
+        return sorted(out, key=lambda r: (not r["open_now"], r["km"]))
+
+    @staticmethod
+    def _now():
+        now = _dt.now(_tz(_td(hours=8)))
+        return now.date().isoformat(), now.hour * 60 + now.minute
+
+    def nearby(self, location, kind="any", exclude=()):
+        here = self._here(location)
+        today, now_min = self._now()
+        banned = {self._place(x) if resolve(x)[0] else x for x in exclude}
+        rows = [r for r in self._candidates(here, kind, banned, now_min, today) if r["open_now"]][:6]
+        self.trace.append({"tool": "location", "query": f"附近 {here}", "result": [r["name"] for r in rows]})
+        return {"ok": True, "from": here, "now": hhmm(now_min), "places": rows,
+                "note": "只推荐 open_now 为真的；距离是直线公里数。需要预约的要提醒。资料没写开放时间的（hours 为空）提醒以现场为准。"}
+
+    def plan_now(self, location, hours=3, kind="any", end_at=None, exclude=()):
+        here = self._here(location)
+        today, now_min = self._now()
+        start = ((now_min + 14) // 15) * 15
+        end = min(start + int(hours * 60), 22 * 60)
+        if end - start < 60:
+            raise Invalid("现在离 22:00 不到 1 小时，建议就近吃点东西、早点休息，不再排新的景点。")
+        banned = {self._place(x) if resolve(x)[0] else x for x in exclude}
+        pool = [r["name"] for r in self._candidates(here, kind, banned, start, today) if r["open_now"]][:7]
+        if not pool:
+            return {"ok": False, "error": "附近 5 公里内此刻没有开着、可排程的地方", "hint": "如实说明，建议游客换个片区或改天。"}
+        c = {**new_contract(), "start": start, "end": end, "origin": here, "date": today,
+             "destination": self._place(end_at) if end_at else None}
+        best = None
+        most = 2 if kind == "food" else 4
+        for size in range(min(most, len(pool)), 0, -1):
+            for group in _combos(pool, size):
+                if sum(n in FOOD for n in group) > (2 if kind == "food" else 1):
+                    continue
+                found = reorder(c, list(group), candidates=4) if size > 1 else None
+                if size == 1:
+                    proof = evaluate(c, list(group))
+                    found = None if proof["violations"] else (list(group), proof)
+                if not found:
+                    continue
+                order, proof = found
+                travel = sum(s["leg"] for s in proof["stops"]) + proof["last_leg"]
+                rank = (-len(order), travel)
+                if best is None or rank < best[0]:
+                    best = (rank, order, proof)
+            if best:
+                break
+        if not best:
+            return {"ok": False, "error": "这段时间里排不进附近的景点", "hint": "如实说明，可以只推荐一个最近的地方（用 nearby）。"}
+        _, order, proof = best
+        card = {"contract": c, "order": order, "audit": proof, "diff": {}, "guide": None, "guide_source": None}
+        self.preview = {"1": card}
+        self.mode = "preview"
+        self.trace.append({"tool": "location", "query": f"临时安排 {here}", "result": order})
+        said = location.strip()
+        line = day_lines({"1": card})[0].replace("第1天：", f"今天 {hhmm(start)} 从{said if said != here else here}出发：")
+        return {"ok": True, "summary_line": line, "opening_notes": opening_notes({"1": card}) or None,
+                "reminder": "逐字给出 summary_line，一句话说为什么这样排；说明已放在行程板「临时安排」，不影响正式行程。"}
 
     def get_trip(self):
         days = self.draft.get("days") or {}

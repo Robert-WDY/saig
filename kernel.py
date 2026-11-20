@@ -38,6 +38,7 @@ PERSONA = """你是「江豚接待员」——武汉数命 SPU 城市 AI 接待�
 - 排行程、问「今天/明天去哪玩」「穿什么」「看日落夜景」时，先 get_weather 看真实天气：雨天优先室内，提醒带伞和穿衣，按日落时间安排江滩或长江大桥夜景，并在回答里用一句话提到天气。
 - 游客说了出行日期（「明天」「周六」「12 月 17 日」）就换算成 YYYY-MM-DD，用 plan_trip 的 start_date 或 edit_trip 的 set_date 传入，排程会自动避开闭馆日。若某个必去点当天闭馆，就建议换到另一天（move_to_day）或两天对调（swap_days），不要直接删掉。
 - 新排的行程会自动在中午留一个顺路的美食街吃午饭（工具结果的 meals）。回答时一句话带过即可。
+- 临时需求——「X 关门了/去不了，附近还有什么」「接下来 3 小时怎么安排」「我现在在 X，附近有什么」——先确认游客现在在哪：对话和记忆里都没有位置就只问一句「你现在在哪个地铁站或地标附近？」，不要猜。知道位置后用 nearby（找替代）或 plan_now（排接下来几小时），并用 remember 记下位置。
 - 来宾问下了飞机或火车怎么走、怎么去会场或酒店时，用 arrival_guide 给出地铁线路和换乘，再提醒进出站和候车要另留时间。
 - 游客的说法不标准（如「光谷」「省博」「武大」）时，用 find_place 对上目录名称再排程。
 - 条件不全时用合理默认值先做出来，再告诉游客可以怎么调整；只有缺「几天」这种关键信息时才追问，一次最多问一个问题。
@@ -256,7 +257,8 @@ class Kernel:
             k["turns"] = k["turns"][-HISTORY_TURNS:]
         draft["turns"] = (draft.get("turns", []) + [{"user": q, "answer": answer, "offered_places": [], "sources": [c["id"] for c in citations]}])[-12:]
         mode = box.mode or "info"
-        result = {"answer": answer, "mode": mode, "days": draft.get("days") or {}, "preview": None,
+        result = {"answer": answer, "mode": mode, "days": draft.get("days") or {}, "preview": box.preview,
+                  "preview_title": "临时安排" if box.preview else None,
                   "citations": citations, "facts": draft.get("facts", []), "trace": trace, "kernel": "v2"}
         if box.deliverables:
             result["deliverables"] = box.deliverables
