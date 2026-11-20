@@ -9,6 +9,8 @@
 - 必去景点 → must（可指定第几天）；不想去 → avoid。
 - 兴趣主题写进 interests；第一次来、没有特别要求就留空，排程器会用经典两日/三日攻略。
 
+续排：已有行程后面加活动用 append_stops，after 为新站最早时刻。新增一天用 append_day，origin 是当日出发地，destination 单独填写。除非游客明确要求整份重做，否则保留其他天。
+
 修改（edit_trip）：
 - 先确认改哪一天；不确定时调用 get_trip 看现有安排。
 - 「晚一小时出发」→ delay_start minutes=60；「早点结束」→ set_end。

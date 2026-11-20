@@ -34,7 +34,8 @@ PERSONA = """你是「江豚接待员」——武汉数命 SPU 城市 AI 接待�
   · 会变或需要权威的信息——日期、价格、开放时间、地址、交通线路、预约规则，以及数命 SPU 社区和 SAIG 比赛的一切细节——只依据检索结果。查不到就说官方资料暂无，并告诉游客去哪里确认。绝不编造。
   · 广为人知、长期稳定的城市常识——武汉话常用词和说法、饮食习惯、历史典故、文化背景、出行常识——资料不够时，用你自己的知识补充，讲得具体、生动、有用。这部分不标出处，用一句话自然地点明是「我知道的常识」，没把握的不说。
 - 不要只回一句「资料里没有」就结束。先给出你能确定的有用内容，再给下一步建议。像一位熟悉武汉、靠谱又有趣的本地朋友：例如问武汉话，就举几个常用词，配上意思和用法。
-- 排行程、改行程只能通过 plan_trip / edit_trip；行程中的时间与交通全部来自工具结果，照抄 summary_lines，不自己改时间。
+- 排行程、改行程只能通过 plan_trip、append_day、append_stops 或 edit_trip；行程中的时间与交通全部来自工具结果，照抄 summary_lines，不自己改时间。
+- 已有行程时先区分续排和重做：继续玩、在某时之后再加几个地方，用 append_stops，保留之前的顺序和时刻；没有明确放宽就保留原结束时间。接着安排新的一天用 append_day，游客说的起点填 origin（出发锚点），只列新增这天。保留游客不想去的地点。只有明确要整份重新设计才使用 plan_trip 的 replace_existing。当天局部替换、删站、重排用 edit_trip。
 - 排行程、问「今天/明天去哪玩」「穿什么」「看日落夜景」时，先 get_weather 看真实天气：雨天优先室内，提醒带伞和穿衣，按日落时间安排江滩或长江大桥夜景，并在回答里用一句话提到天气。
 - 游客说了出行日期（「明天」「周六」「12 月 17 日」）就换算成 YYYY-MM-DD，用 plan_trip 的 start_date 或 edit_trip 的 set_date 传入，排程会自动避开闭馆日。若某个必去点当天闭馆，就建议换到另一天（move_to_day）或两天对调（swap_days），不要直接删掉。游客说某天想自由活动、空出来，用一次 edit_trip 的 clear_day 完成，他点名要保留的站写在同一个动作的 place + to_day 里；不要顺手延长别的天的结束时间。
 - 新排的行程会自动在中午留一个顺路的美食街吃午饭（工具结果的 meals）。回答时一句话带过即可。
@@ -191,6 +192,7 @@ class Kernel:
         k = draft.setdefault("kernel", {"turns": [], "facts": {}, "earlier": []})
         trace = []
         box = Toolbox(self.agent, draft, trace)
+        continued = False
         messages = [{"role": "system", "content": system_prompt(draft)}]
         for t in k.get("turns", [])[-HISTORY_TURNS:]:
             messages += [{"role": "user", "content": t["user"]}, {"role": "assistant", "content": t["assistant"]}]
@@ -238,6 +240,8 @@ class Kernel:
                         emit("tool", {"name": name, "args": args})
                         started = time.perf_counter()
                         result = box.call(name, args)
+                        if name in ("append_day", "append_stops") and result.get("ok"):
+                            continued = True
                         wrote = wrote or (name in WRITE_TOOLS and name != "remember" and result.get("ok"))
                         emit("tool_done", {"name": name, "ok": bool(result.get("ok")), "ms": round((time.perf_counter() - started) * 1000)})
                 trace.append({"step": "tool_call", "name": name, "ok": bool(result.get("ok")),
@@ -260,6 +264,9 @@ class Kernel:
         result = {"answer": answer, "mode": mode, "days": draft.get("days") or {}, "preview": box.preview,
                   "preview_title": "临时安排" if box.preview else None,
                   "citations": citations, "facts": draft.get("facts", []), "trace": trace, "kernel": "v2"}
+        if continued:
+            changed = {k: card for k, card in draft["days"].items() if card != state.get("days", {}).get(k)}
+            result["summary_lines"] = day_lines(changed)
         if box.deliverables:
             result["deliverables"] = box.deliverables
         return draft, result

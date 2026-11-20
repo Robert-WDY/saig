@@ -180,12 +180,13 @@ function replyTopics(result) {
   }
   return found.slice(0, 3);
 }
-function planSummary(answer = "") {
-  return answer.split("\n").filter(line => /^第\d+天[：:]/.test(line))
+function planSummary(result) {
+  if (Array.isArray(result.summary_lines)) return result.summary_lines;
+  return (result.answer || "").split("\n").filter(line => /^第\d+天[：:]/.test(line))
     .map(line => line.replace(/\s*参考《[^》]*》.*$/, "").replace(/\d{1,2}:\d{2}–\d{1,2}:\d{2}\s*/g, ""));
 }
 function spokenReply(result) {
-  const days = planSummary(result.answer);
+  const days = planSummary(result);
   if (days.length) return "好的，行程排好啦。" + days.join("。") + "。每一站的时间和交通都在行程板上。";
   return (result.answer || "").split("\n").slice(0, 3).join("");
 }
@@ -260,9 +261,9 @@ function renderReply(bubble, result) {
     const details = node("details", "answer-detail");
     details.append(node("summary", "", "展开完整回答"), body);
     bubble.append(details);
-  } else if (planSummary(result.answer).length) {
+  } else if (planSummary(result).length) {
     const summary = node("div", "plan-summary");
-    for (const line of planSummary(result.answer)) {
+    for (const line of planSummary(result)) {
       const [day, stops = ""] = line.split(/[：:](.*)/s);
       const row = node("p", "summary-day");
       row.append(node("b", "", day), node("span", "", stops.trim()));
@@ -653,7 +654,9 @@ function tripText(plan) {
     const card = plan.cards[day], stops = card.audit?.stops || [];
     if (!stops.length) return `第${day}天：自由活动`;
     const back = card.contract?.destination ? `，约 ${hm(card.audit.arrival)} 回到${card.contract.destination}` : "";
-    return `第${day}天：` + stops.map(s => `${hm(s.start)} ${s.place}`).join(" → ") + back;
+    const c = card.contract;
+    const origin = c?.origin && c.origin !== stops[0].place ? hm(c.start) + " " + c.origin + "出发 → " : "";
+    return `第${day}天：` + origin + stops.map(s => `${hm(s.start)} ${s.place}`).join(" → ") + back;
   }).join("\n") + "\n—— 武汉接线台 · 江豚接待员排程（时间为估算，出发前核实开放与预约）";
 }
 function tripCalendar(plan, firstDay) {
@@ -885,6 +888,7 @@ const stepLabel = (name, args = {}) => ({
   search_knowledge: "检索官方资料" + (args.query ? "：" + args.query : ""),
   read_source: "读原文", find_place: "查地点" + (args.name ? "：" + args.name : ""),
   get_trip: "读取当前行程", plan_trip: "排行程（计算交通与时间）", edit_trip: "调整第 " + (args.day || "?") + " 天行程",
+  append_day: "新增第 " + args.day + " 天", append_stops: "接着安排第 " + args.day + " 天后续行程",
   read_skill: "翻看接待手册", remember: "记下你的信息",
   get_weather: "查看武汉天气", arrival_guide: "查接站路线" + (args.gateway ? "：" + args.gateway : "")
 })[name] || name;
@@ -963,7 +967,7 @@ async function sendPending() {
     }
     state.session = result.session;
     state.messages.push({role: "assistant", result: {
-      answer: result.answer, citations: result.citations, deliverables: result.deliverables, topics: replyTopics(result)
+      answer: result.answer, summary_lines: result.summary_lines, citations: result.citations, deliverables: result.deliverables, topics: replyTopics(result)
     }});
     if (typeof Receptionist !== "undefined") Receptionist.say(spokenReply(result));
     updateBoard(result);

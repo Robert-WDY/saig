@@ -19,10 +19,11 @@ def deepseek_key():
     if key:
         return key
     if os.name == "nt":
+        from pywintypes import error as WindowsCredentialError
         import win32cred
         try:
             credential = win32cred.CredRead("SAIG/DeepSeek", win32cred.CRED_TYPE_GENERIC)
-        except win32cred.error as exc:
+        except WindowsCredentialError as exc:
             if exc.winerror != 1168:
                 raise
         else:

@@ -14,6 +14,67 @@ def call(name, args, i=0):
     return {"id": f"c{i}", "type": "function", "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)}}
 
 
+class TripContinuationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.agent = Agent(str(Path(self.tmp.name) / "s.sqlite"), model=Mock())
+        self.agent.model.ask.return_value = {"id": "none", "order": []}
+        self.draft = {"days": {}}
+        self.box = Toolbox(self.agent, self.draft, [])
+        initial = self.box.call("plan_trip", {"days": 1, "end": "15:30", "start_date": "2026-11-24",
+                                              "avoid": ["黄鹤楼"], "must": [{"place": "汉口江滩"}]})
+        self.assertTrue(initial["ok"], initial)
+
+    def test_tail_then_another_day_keep_scope(self):
+        from copy import deepcopy
+        old = deepcopy(self.draft["days"]["1"])
+        result = self.box.call("append_stops", {"day": 1, "after": "15:30", "end": "19:30", "count": 2})
+        self.assertTrue(result["ok"], result)
+        card = self.draft["days"]["1"]
+        prefix = len(old["order"])
+        self.assertEqual(card["audit"]["stops"][:prefix], old["audit"]["stops"])
+        self.assertEqual(len(card["order"]), prefix + 2)
+        self.assertGreaterEqual(card["audit"]["stops"][prefix]["start"], 930)
+        frozen = deepcopy(card)
+        result = self.box.call("append_day", {"day": 2, "origin": "吉庆街"})
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.draft["days"]["1"], frozen)
+        second = self.draft["days"]["2"]
+        self.assertEqual(second["contract"]["date"], "2026-11-25")
+        self.assertEqual(second["contract"]["origin"], "吉庆街")
+        self.assertIsNone(second["contract"]["destination"])
+        self.assertEqual(second["audit"]["legs"][0]["origin"], "吉庆街")
+        self.assertEqual(second["audit"]["legs"][0]["departure"], second["contract"]["start"])
+        self.assertIn("吉庆街", result["summary_lines"][0].split(" → ")[0])
+        self.assertNotIn("黄鹤楼", second["order"])
+        self.assertFalse(set(second["order"]) & set(frozen["order"]))
+
+    def test_old_session_and_named_tail_failure(self):
+        from copy import deepcopy
+        self.draft.pop("trip_defaults")  # Saved before the extension tools existed.
+        old = deepcopy(self.draft)
+        result = self.box.call("append_stops", {"day": 1, "end": "21:00", "places": ["武汉大学", "黄鹤楼"]})
+        self.assertFalse(result["ok"])
+        self.assertEqual(old, self.draft)
+        result = self.box.call("append_day", {"day": 2, "origin": "汉口站", "destination": "江汉路", "end": "17:00"})
+        self.assertTrue(result["ok"], result)
+        second = self.draft["days"]["2"]
+        self.assertEqual(self.draft["days"]["1"], old["days"]["1"])
+        self.assertIn("黄鹤楼", second["contract"]["exclude"])
+        self.assertEqual(second["audit"]["legs"][0]["origin"], "汉口站")
+        self.assertEqual(second["audit"]["legs"][-1]["destination"], "江汉路")
+        self.assertLessEqual(second["audit"]["arrival"], 17 * 60)
+
+    def test_rejected_continuations_are_atomic(self):
+        from copy import deepcopy
+        old = deepcopy(self.draft)
+        for tool, args in [("append_stops", {"day": 1, "after": "17:00"}),
+                           ("append_day", {"day": 3, "origin": "江汉路"}),
+                           ("plan_trip", {"days": 2})]:
+            self.assertFalse(self.box.call(tool, args)["ok"], tool)
+            self.assertEqual(self.draft, old)
+
 class KernelTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
