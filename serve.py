@@ -116,7 +116,36 @@ class ReviewedSources:
             return self.agent
 
 
-def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
+class VisitorLimiter:
+    """Per-visitor turn limits for the public trial: a short burst window and a daily allowance."""
+    def __init__(self, per_minute=8, per_day=150):
+        self.per_minute, self.per_day = per_minute, per_day
+        self.lock = Lock()
+        self.recent, self.daily, self.day = {}, {}, None
+
+    def allow(self, key):
+        now = monotonic()
+        today = int((__import__("time").time() + 28800) // 86400)
+        with self.lock:
+            if today != self.day:
+                self.day, self.daily = today, {}
+            if len(self.recent) > 20000:
+                self.recent = {k: v for k, v in self.recent.items() if v and now - v[-1] < 60}
+            window = [t for t in self.recent.get(key, []) if now - t < 60]
+            if len(window) >= self.per_minute:
+                return "你问得太快啦，稍等几十秒再继续。"
+            if self.daily.get(key, 0) >= self.per_day:
+                return "今天的试用次数已用完，北京时间零点后恢复。"
+            window.append(now)
+            self.recent[key] = window
+            self.daily[key] = self.daily.get(key, 0) + 1
+        return None
+
+
+def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300, public=False, limiter=None):
+    # Public trial (no invite) gets the same protections as the invite build: no debug endpoints,
+    # opaque session ids, no trace in responses, plus per-visitor rate limits.
+    guarded = bool(invite) or public
     hosts = {h.lower() for h in hosts} if hosts else None
     sources = ReviewedSources(agent, DATA/"official.json") if isinstance(agent.kb, Knowledge) else None
     session_locks = {}
@@ -219,9 +248,17 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
             else:
                 self.send_json(404,{"error":"未知入口"})
 
+        def visitor(self):
+            # Behind the bundled Caddy the peer is the proxy; it appends the real client address last.
+            peer=self.client_address[0]
+            forwarded=self.headers.get("X-Forwarded-For","")
+            if forwarded and os.getenv("SAIG_TRUST_PROXY","0")=="1":
+                return forwarded.split(",")[-1].strip() or peer
+            return peer
+
         def do_POST(self):
             if not self.allowed(True):return
-            if self.path not in ("/chat","/chat/stream","/route-edit","/session/delete","/tool","/rag") or (invite and self.path in ("/tool","/rag")):
+            if self.path not in ("/chat","/chat/stream","/route-edit","/session/delete","/tool","/rag") or (guarded and self.path in ("/tool","/rag")):
                 return self.send_json(404,{"error":"未知入口"})
             if self.headers.get_content_type()!="application/json":
                 return self.send_json(415,{"error":"需要 application/json"})
@@ -235,7 +272,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 sid=body.get("session") or uuid4().hex
                 req=body.get("request_id") or uuid4().hex
                 if any(not isinstance(x,str) or not 0<len(x)<=128 for x in (sid,req)):raise ValueError()
-                if invite and not re.fullmatch(r"[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}",sid):raise ValueError()
+                if guarded and not re.fullmatch(r"[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}",sid):raise ValueError()
                 if self.path in ("/session/delete","/route-edit") and not body.get("session"):raise ValueError()
                 if self.path=="/route-edit" and (not isinstance(body.get("change"),dict) or not body.get("request_id")):raise ValueError()
                 q=body.get("query")
@@ -244,7 +281,10 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                 if self.path=="/rag" and body["tool"]=="location":raise ValueError()
             except (ValueError,TypeError,UnicodeError):
                 return self.send_json(400,{"error":"请求字段或格式无效"})
-            internal=("invite:"+hashlib.sha256(sid.encode()).hexdigest()) if invite else sid
+            internal=("invite:"+hashlib.sha256(sid.encode()).hexdigest()) if guarded else sid
+            if limiter and self.path in ("/chat","/chat/stream"):
+                refusal=limiter.allow(self.visitor())
+                if refusal:return self.send_json(429,{"error":refusal})
             lock=session_lock(internal)
             if not lock.acquire(blocking=False):
                 return self.send_json(409,{"error":"会话正在处理，请稍后再试。"})
@@ -281,7 +321,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                         try:
                             result={**kernel_for(current).respond(internal,q,req,emit=emit),"session":sid,"request_id":req}
                             result["topics"]=reply_topics(result)
-                            if invite:
+                            if guarded:
                                 result.pop("trace",None)
                                 result.pop("facts",None)
                             emit("result",result)
@@ -295,12 +335,12 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300):
                             emit("error",{"status":500,"error":"接待服务发生内部错误，请稍后重试。"})
                         return
                     elif self.path=="/chat":
-                        debug=not invite and body.get("diagnostics") is True
+                        debug=not guarded and body.get("diagnostics") is True
                         with capture(debug) as events,timed("chat"):
                             result={**kernel_for(current).respond(internal,q,req),"session":sid,"request_id":req}
                         if debug:result["events"]=events
                         result["topics"]=reply_topics(result)
-                        if invite:
+                        if guarded:
                             result.pop("trace",None)
                             result.pop("facts",None)
                     else:
@@ -356,11 +396,14 @@ if __name__=="__main__":
     p.add_argument("--db",default=str(Path(__file__).parent/"sessions.sqlite"))
     args=p.parse_args()
     invite=os.getenv("SAIG_INVITE","")
+    public=os.getenv("SAIG_PUBLIC","0")=="1"
     hosts=set(args.allowed_host)
     hosts.update(x.strip() for x in os.getenv("SAIG_ALLOWED_HOSTS","").split(",") if x.strip())
     if args.host!="127.0.0.1" or hosts or invite:
-        if len(invite)<24 or not hosts:p.error("对外监听需要明确 --allowed-host 和至少 24 字符的 SAIG_INVITE")
+        if not hosts:p.error("对外监听需要明确 --allowed-host（或 SAIG_ALLOWED_HOSTS）")
+        if not public and len(invite)<24:p.error("对外监听需要 SAIG_PUBLIC=1（公开试用，限流）或至少 24 字符的 SAIG_INVITE")
     else:hosts={f"localhost:{args.port}",f"127.0.0.1:{args.port}"}
     agent=Agent(args.db)
-    api=handler(agent,hosts,invite,int(os.getenv("SAIG_SESSION_CAP","400")),int(os.getenv("SAIG_DAY_CAP","3000")))
+    limiter=VisitorLimiter(int(os.getenv("SAIG_VISITOR_PER_MINUTE","8")),int(os.getenv("SAIG_VISITOR_PER_DAY","150"))) if public or invite else None
+    api=handler(agent,hosts,invite,int(os.getenv("SAIG_SESSION_CAP","400")),int(os.getenv("SAIG_DAY_CAP","3000")),public,limiter)
     Server((args.host,args.port),api,agent.store).serve_forever()

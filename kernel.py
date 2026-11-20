@@ -18,7 +18,7 @@ import requests
 
 from diagnostics import timed
 from kernel_tools import TOOL_DEFS, WRITE_TOOLS, Toolbox, day_lines, skill_index
-from limits import charge_attempt, remaining
+from limits import TurnExpired, charge_attempt, remaining
 from model import ModelError, deepseek_key
 from planning import transport_cache
 
@@ -152,11 +152,30 @@ class Kernel:
             rev, state, cached = self.store.read(sid, req, q)
             if cached:
                 return cached
-            draft, result = self.turn(q, state, emit or (lambda *_: None))
+            try:
+                draft, result = self.turn(q, state, emit or (lambda *_: None))
+            except (requests.RequestException, ModelError, TurnExpired):
+                # Provider down or rate limited: still answer from the official passages, clearly flagged.
+                draft, result = deepcopy(state), self.degraded(q, state)
             result["revision"] = rev + 1
             return self.store.save(sid, req, q, rev, draft, result)
         finally:
             transport_cache.reset(token)
+
+    def degraded(self, q, state):
+        box = Toolbox(self.agent, deepcopy(state), [])
+        hits = box.search_knowledge(q, "any", 3)["results"]
+        cites, lines = [], ["模型服务暂时繁忙，我先把官方资料里最相关的内容摘给你，稍后再问我能给出完整回答："]
+        for h in hits:
+            doc = box.refs[h["ref"]]
+            snippet = re.sub(r"\s+", " ", doc["text"]).strip()[:140]
+            lines.append(f"· {h['title'] or '官方资料'}：{snippet}")
+            cites.append({**{f: doc.get(f) for f in ("id", "source", "title", "locator", "edition")},
+                          "quote": doc["text"][:300], "claim": snippet})
+        if not hits:
+            lines.append("这个问题官方资料里暂时没有找到相关内容，请稍后重试。")
+        return {"answer": "\n".join(lines), "mode": "degraded", "degraded": True, "days": state.get("days", {}),
+                "preview": None, "citations": cites, "facts": [], "trace": [], "kernel": "v2"}
 
     def turn(self, q, state, emit):
         draft = deepcopy(state)

@@ -1,5 +1,8 @@
 {$SAIG_DOMAIN} {
-    reverse_proxy api:18943
+    reverse_proxy api:18943 {
+        # Stream server-sent events (live steps and reply text) without buffering.
+        flush_interval -1
+    }
     header Referrer-Policy no-referrer
     header X-Content-Type-Options nosniff
 }

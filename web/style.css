@@ -57,6 +57,11 @@ nav { display: flex; align-items: center; gap: 5px; }
 .eyebrow { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .14em; color: var(--sand); border-bottom: 2px solid var(--orange); padding-bottom: 3px; }
 .stage h1 { font: 900 clamp(34px, 4.6vw, 62px)/1.04 var(--sans); margin: 12px 0 10px; letter-spacing: -.05em; text-shadow: 3px 3px 0 #0b2a7a; }
 .stage-lede { color: #e4ebff; font-size: 14px; line-height: 1.7; max-width: 430px; }
+.judge-tour { margin-top: 12px; display: inline-flex; align-items: baseline; gap: 8px; padding: 9px 16px; border: 0; border-radius: 999px; background: var(--accent, #1f6feb); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.judge-tour small { font-weight: 400; opacity: .85; }
+.judge-tour:disabled { opacity: .75; cursor: progress; }
+.judge-tour:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+@media (max-width: 560px) { .judge-tour { flex-wrap: wrap; } .judge-tour small { flex-basis: 100%; } }
 .skills { margin-top: 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .starter.skill { display: grid; grid-template-columns: none; border-top: 0; align-content: start; gap: 2px; min-height: 92px; padding: 10px 11px 11px; text-align: left; color: var(--ink); background: var(--card); border: 0; border-radius: 4px; box-shadow: 0 4px 0 #0b2a7a; }
 .starter.skill:hover { background: var(--sand); transform: translateY(-2px); box-shadow: 0 6px 0 #0b2a7a; }

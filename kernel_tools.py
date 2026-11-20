@@ -323,7 +323,7 @@ class Toolbox:
             card = self.agent.day(key, op, old, self.trace)
         except Invalid as exc:
             return {"ok": False, "error": str(exc), "unchanged": True,
-                    "hint": "行程保持原样。可以建议游客删掉某一站、提前出发或放宽结束时间。"}
+                    "hint": "行程保持原样。若游客已表示想轻松、少走或晚出发，直接再调用一次 edit_trip，多删一个离路线最远的站后重试，然后在回答里说明多删了哪站；只有游客明确要保留全部站点时，才把选择题交给游客。回答要完整，不要中途截断。"}
         new = {**days, key: card}
         self._commit(new, "edit")
         return {"ok": True, "summary_lines": day_lines({key: card}), "diff": card.get("diff"),

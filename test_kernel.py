@@ -100,3 +100,62 @@ class GroundingGuardTests(KernelTests):
     def test_short_greeting_is_not_blocked(self):
         self.kernel.chat = lambda *a, **k: {"role": "assistant", "content": "你好呀！想先聊武汉还是排行程？"}
         self.assertIn("你好", self.kernel.respond("g2", "你好")["answer"])
+
+
+class DegradedTests(KernelTests):
+    def test_provider_failure_answers_from_official_passages(self):
+        from model import ModelError
+        self.kernel.chat = Mock(side_effect=ModelError("down"))
+        result = self.kernel.respond("d" * 32, "数命 SPU 社区在哪里？")
+        self.assertEqual(result["mode"], "degraded")
+        self.assertTrue(result["citations"])
+        self.assertIn("模型服务暂时繁忙", result["answer"])
+
+
+class PublicTrialTests(unittest.TestCase):
+    def test_visitor_limiter_burst_and_daily(self):
+        from serve import VisitorLimiter
+        limiter = VisitorLimiter(per_minute=2, per_day=3)
+        self.assertIsNone(limiter.allow("a"))
+        self.assertIsNone(limiter.allow("a"))
+        self.assertIn("太快", limiter.allow("a"))
+        self.assertIsNone(limiter.allow("b"))
+        limiter.recent["a"] = []
+        self.assertIsNone(limiter.allow("a"))
+        limiter.recent["a"] = []
+        self.assertIn("用完", limiter.allow("a"))
+
+    def test_public_mode_needs_no_invite_but_hides_debug_and_limits(self):
+        import threading
+        from http.server import ThreadingHTTPServer
+        from unittest.mock import patch
+        import requests
+        from serve import VisitorLimiter, handler
+        from storage import Sessions
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        agent = Mock()
+        agent.store = Sessions(str(Path(tmp.name) / "s.sqlite"))
+        agent.kb.rows = []
+        agent.model.name = "test"
+        agent.respond.side_effect = lambda sid, q, req: agent.store.save(sid, req, q, 0, {}, {"answer": "ok", "trace": [{"tool": "wuhan", "query": "q"}], "facts": ["x"]})
+        api = handler(agent, {"test.local"}, "", 50, 50, True, VisitorLimiter(per_minute=2, per_day=10))
+        api.log_message = lambda *a: None
+        server = ThreadingHTTPServer(("127.0.0.1", 0), api)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = f"http://127.0.0.1:{server.server_port}"
+        http = requests.Session()
+        http.trust_env = False
+        self.addCleanup(http.close)
+        headers = {"Host": "test.local"}
+        with patch.dict("os.environ", {"SAIG_KERNEL": "v1"}):
+            first = http.post(base + "/chat", json={"session": "1" * 32, "query": "q", "request_id": "r1"}, headers=headers, timeout=3)
+            self.assertEqual(first.status_code, 200)
+            self.assertNotIn("trace", first.json())
+            self.assertEqual(http.post(base + "/tool", json={"session": "1" * 32, "query": "q"}, headers=headers, timeout=3).status_code, 404)
+            http.post(base + "/chat", json={"session": "1" * 32, "query": "q2", "request_id": "r2"}, headers=headers, timeout=3)
+            limited = http.post(base + "/chat", json={"session": "1" * 32, "query": "q3", "request_id": "r3"}, headers=headers, timeout=3)
+            self.assertEqual(limited.status_code, 429)
+            self.assertIn("太快", limited.json()["error"])

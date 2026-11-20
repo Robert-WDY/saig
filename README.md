@@ -29,13 +29,22 @@ python serve.py
 
 同一可信 Wi-Fi 内，在 Windows 上运行 `.\start-phone.ps1 -Address 本机无线网IPv4`。把窗口打印的完整链接在手机微信中打开；程序绑定指定网卡及端口 18944，使用单独的会话库。手机需能直连开发机；若防火墙拦截，只对受信任的专用网络允许该端口。局域网 HTTP 仅用于本地设备验收。
 
-公网服务器需配置域名的 DNS、开放 80/443，安装 Docker Compose。在主机环境或私有 .env 中设置 `SAIG_DOMAIN`、`DEEPSEEK_API_KEY`、`SAIG_INVITE`（至少 24 字符的随机邀请串）。执行：
+公网服务器需配置域名的 DNS、开放 80/443，安装 Docker Compose。在主机环境或私有 .env 中设置 `SAIG_DOMAIN`（域名）与 `DEEPSEEK_API_KEY`，执行：
 
 ~~~sh
 docker compose up --build -d
 ~~~
 
-Caddy 负责 HTTPS。评委使用 `https://域名/#invite=邀请串` 直达；页面读取片段后从地址栏移除，在同一标签页中继续使用。普通读者可以匿名看首页与地图，生成问答需要邀请。模型请求含重试在内，每轮最多 32 次；额度按真实上游请求原子扣除，默认每会话每天 400 次、全站每天 3000 次，按北京时间零点更新；后两项用 SAIG_SESSION_CAP、SAIG_DAY_CAP 配置。会话在最后成功写入约 24 小时后清除，旧库首次升级起有 24 小时过渡期。点击“新对话”删除服务端记录后清除本页。GitHub Pages 提供作品主页和演示；实际问答由以上 Python 服务处理。
+默认是**公开试用模式**（`SAIG_PUBLIC=1`）：评委直接打开 `https://域名/` 即可提问，不需要邀请码。保护措施：
+- 每位访客（按真实 IP，Caddy 转发）每分钟 8 轮、每天 150 轮，可用 `SAIG_VISITOR_PER_MINUTE`、`SAIG_VISITOR_PER_DAY` 调整；
+- 模型额度按真实上游请求原子扣除，每轮最多 32 次；默认每会话每天 400 次、全站每天 3000 次（`SAIG_SESSION_CAP`、`SAIG_DAY_CAP`），按北京时间零点更新；
+- 公开模式不暴露调试接口和内部轨迹；
+- 模型服务故障或超时时，自动降级为「官方资料摘录 + 出处」，不出现技术报错；
+- 回答通过 SSE 流式推送（Caddy 已设 `flush_interval -1`），容器带健康检查。
+
+如需改为邀请制，设置 `SAIG_PUBLIC=0` 与 `SAIG_INVITE`（至少 24 字符），评委使用 `https://域名/#invite=邀请串` 访问。
+
+首页的「评委快速体验」按钮会依次演示四项功能，再演示一次改行程，全程约 1 分钟。会话在最后成功写入约 24 小时后清除；点击「新对话」会删除服务端记录。GitHub Pages 提供作品主页和演示；实际问答由以上 Python 服务处理。
 
 ## 调用
 

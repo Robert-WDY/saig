@@ -826,6 +826,27 @@ question.addEventListener("keydown", event => {
     sendText(question.value);
   }
 });
+// Judge quick tour: the four contest functions plus one change of plan, sent one after another.
+const tourButton = get("judge-tour");
+if (tourButton) tourButton.addEventListener("click", async () => {
+  if (state.pending || tourButton.disabled) return;
+  const prompts = [...document.querySelectorAll(".starter.skill")].map(item => item.dataset.prompt);
+  prompts.push("第一天有点累，少两个点，下午一点再出发。");
+  const label = tourButton.innerHTML;
+  tourButton.disabled = true;
+  get("assistant").scrollIntoView({behavior: "smooth", block: "start"});
+  try {
+    for (const [index, prompt] of prompts.entries()) {
+      tourButton.textContent = `评委快速体验 · 第 ${index + 1}/${prompts.length} 步`;
+      await sendText(prompt);
+      if (state.pending) break;
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+  } finally {
+    tourButton.disabled = false;
+    tourButton.innerHTML = label;
+  }
+});
 for (const starter of document.querySelectorAll(".starter")) {
   starter.addEventListener("click", () => {
     if (starter.classList.contains("skill")) get("assistant").scrollIntoView({behavior: "smooth", block: "start"});

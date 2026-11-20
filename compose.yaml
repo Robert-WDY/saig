@@ -2,12 +2,16 @@ services:
   api:
     build: .
     environment:
-      SAIG_INVITE: ${SAIG_INVITE:?set an invitation code}
+      SAIG_PUBLIC: ${SAIG_PUBLIC:-1}
+      SAIG_INVITE: ${SAIG_INVITE:-}
+      SAIG_TRUST_PROXY: "1"
+      SAIG_VISITOR_PER_MINUTE: ${SAIG_VISITOR_PER_MINUTE:-8}
+      SAIG_VISITOR_PER_DAY: ${SAIG_VISITOR_PER_DAY:-150}
       SAIG_ALLOWED_HOSTS: ${SAIG_DOMAIN:?set public DNS name}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?set provider key}
       SAIG_AMAP_KEY: ${SAIG_AMAP_KEY:-}
-      SAIG_SESSION_CAP: ${SAIG_SESSION_CAP:-60}
-      SAIG_DAY_CAP: ${SAIG_DAY_CAP:-300}
+      SAIG_SESSION_CAP: ${SAIG_SESSION_CAP:-400}
+      SAIG_DAY_CAP: ${SAIG_DAY_CAP:-3000}
     volumes:
       - conversations:/state
     restart: unless-stopped
