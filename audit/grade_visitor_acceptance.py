@@ -5,6 +5,16 @@ import statistics
 from pathlib import Path
 
 
+def mentions_in_order(text, places):
+    cursor = 0
+    for place in places:
+        pos = text.find(place, cursor)
+        if pos < 0:
+            return False
+        cursor = pos + len(place)
+    return True
+
+
 def score(case, turns):
     results = [r.get("result", {}) for r in turns]
     days = [r.get("days", {}) for r in results]
@@ -17,11 +27,10 @@ def score(case, turns):
     if case == "map_supersedes_preview":
         current = results[2]["cards"]["1"]
         answer = results[3]["answer"]
-        positions = [answer.find(n) for n in current["order"]]
         return {"preview_diff": "巴公房子" not in results[1]["preview"]["1"]["order"],
                 "latest_map": set(current["order"]) == {"吉庆街", "黎黄陂路", "巴公房子"},
                 "actual_card": read_day(3) == current and results[3].get("has_pending_preview") is False,
-                "correct_readback": min(positions) >= 0 and sorted(positions) == positions}
+                "correct_readback": mentions_in_order(answer, current["order"])}
     if case == "pickup_station_change":
         old, new = read_day(0), read_day(1)
         return {"initial_pickup": arrival(old, "武汉站", 990), "revised_pickup": arrival(new, "汉口站", 990),
@@ -114,10 +123,9 @@ def score(case, turns):
         card = results[1]["cards"]["1"]
         order = card["order"]
         answer = results[3].get("answer", "")
-        positions = [answer.find(n) for n in order]
         return {"fresh_map_edit": "吉庆街" in order and "江汉关" not in order,
                 "stale_change_rejected": turns[2]["http"] == 409, "persisted_card_agrees": card == read_day(3),
-                "answer_follows_saved_order": min(positions) >= 0 and sorted(positions) == positions and "江汉关" not in answer}
+                "answer_follows_saved_order": mentions_in_order(answer, order) and "江汉关" not in answer}
     if case == "hard_transport":
         first = read_day(0)
         return {"allowed_modes_only": all(l["mode"] in ("walk", "metro") for l in first["audit"]["legs"]),

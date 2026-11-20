@@ -7,7 +7,7 @@ from math import ceil, cos, hypot, radians
 from pathlib import Path
 import requests
 
-from places import PLACES,ATLAS_POINTS,transit,amap_key
+from places import PLACES,ATLAS_POINTS,GATEWAYS,transit,amap_key
 from diagnostics import timed
 from limits import remaining
 from trip_contract import settings
@@ -18,7 +18,7 @@ LABEL={"walk":"步行","taxi":"出租车","metro":"地铁","transit":"公交地�
 # Station associations explicitly named in the travel handbook, pp. 200–203.
 ACCESS={**dict.fromkeys(("黄鹤楼","斗级营","昙华林","户部巷","粮道街"),"司门口黄鹤楼"),
         **dict.fromkeys(("江汉关","江汉路"),"江汉路"),**dict.fromkeys(("黎黄陂路","吉庆街","巴公房子","八七会议会址","中共中央机关旧址"),"大智路"),
-        "汉口站":"汉口火车站","汉口江滩":"黄浦路","武汉天地":"黄浦路","东湖绿道":"梨园","东湖听涛":"梨园",
+        **GATEWAYS,"汉口江滩":"黄浦路","武汉天地":"黄浦路","东湖绿道":"梨园","东湖听涛":"梨园",
         "古琴台":"琴台","龟山公园":"琴台","万松园":"王家墩东","楚河汉街":"楚河汉街","中山公园":"中山公园",
         "武汉博物馆":"汉口火车站","光谷广场":"光谷广场","光谷空轨":"光谷四路"}
 
@@ -174,6 +174,8 @@ def choose(a,b,mobility,minute,cache,strict=False):
             if budget is not None:details.append(f"全团交通预算{budget}元；计价器估价不能保证上限")
             if "交通方式" in v:details.append("限定"+"/".join(LABEL[x] for x in sorted(allowed)))
             raise ValueError(f"{a}到{b}缺少满足{'、'.join(details)}的可核实方案")
+        if PLACES[a].get("gateway") or PLACES[b].get("gateway"):
+            raise ValueError(f"{a}到{b}缺少可核验的枢纽转场，请换有交通资料的邻近站点")
         return dict(origin=a,destination=b,minutes=transit(a,b),mode="estimate",changes=None,walk_m=None,
                     group_fare=None,fare_bound=None,source=("按两地距离粗估，实际交通待核" if PLACES[a].get("directory") or PLACES[b].get("directory") else "路网资料不足，按片区预留"))
     def rank(row):

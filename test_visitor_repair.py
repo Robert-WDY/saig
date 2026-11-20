@@ -10,6 +10,8 @@ from kernel_tools import Toolbox
 from kernel import Kernel
 from route_edits import edit_route
 from planning import Invalid, evaluate, new_contract, solve
+from places import ATLAS_POINTS, GATEWAYS
+from transport import choose
 
 
 class VisitorRepairTests(unittest.TestCase):
@@ -147,3 +149,22 @@ class VisitorRepairTests(unittest.TestCase):
         self.assertEqual(set(order), set(required))
         self.assertFalse(proof["violations"])
         self.assertLessEqual(proof["arrival"], c["end"])
+
+    def test_advertised_arrival_hubs_can_be_used_as_pickup_endpoints(self):
+        from kernel_tools import resolve
+        for hub, station in GATEWAYS.items():
+            with self.subTest(hub=hub):
+                self.assertEqual(resolve(station)[0], hub)
+                self.assertIn(hub, ATLAS_POINTS)
+                self.assertTrue(self.box.find_place(hub)["places"][0]["can_anchor_trip"])
+                leg = choose("江汉路", hub, {"rules": []}, 840, {})
+                self.assertNotEqual(leg["mode"], "estimate")
+        box = Toolbox(self.agent, {}, [])
+        self.assertTrue(box.call("plan_trip", {"days": 1, "origin": "江汉路", "destination": "武汉站", "end": "16:30",
+                                             "must": [{"place": "黎黄陂路"}]})["ok"])
+        old = deepcopy(box.draft["days"]["1"])
+        self.assertTrue(box.call("edit_trip", {"day": 1, "actions": [{"type": "set_destination", "place": "汉口站"}]})["ok"])
+        new = box.draft["days"]["1"]
+        self.assertEqual(set(old["order"]), set(new["order"]))
+        self.assertEqual(old["contract"]["end"], new["contract"]["end"])
+        self.assertEqual(new["audit"]["legs"][-1]["destination"], "汉口站")

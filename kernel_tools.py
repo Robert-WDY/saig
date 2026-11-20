@@ -13,7 +13,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 from knowledge import TOOLS as TOPICS
-from places import PLACES, ATLAS, region
+from places import PLACES, ATLAS, GATEWAYS, region
 from planning import Invalid
 from quantities import explicit_clocks
 from trip_contract import GUIDES, trip_review, settings
@@ -29,6 +29,7 @@ WRITE_TOOLS = {"plan_trip", "edit_trip", "append_day", "append_stops", "remember
 
 # Everyday names visitors use for catalogue places.
 ALIASES = {
+    **{station: hub for hub, station in GATEWAYS.items()},
     "光谷": "光谷广场", "武大": "武汉大学", "华科": "华中科技大学", "华中大": "华中科技大学", "华师": "华中师范大学",
     "省博": "湖北省博物馆", "省博物馆": "湖北省博物馆", "湖北博物馆": "湖北省博物馆", "东湖": "东湖听涛", "东湖绿道": "东湖绿道",
     "江滩": "汉口江滩", "长江大桥": "武汉长江大桥", "大桥": "武汉长江大桥", "汉街": "楚河汉街", "楚河": "楚河汉街",
@@ -119,7 +120,6 @@ def lunch_stop(card):
 
 # Windows bound when a stop is visited (start no earlier than, finish no later than), in minutes.
 PERIODS = {"morning": [0, 12 * 60 + 30], "afternoon": [13 * 60, 23 * 60 + 59], "evening": [17 * 60, 23 * 60 + 59]}
-GATEWAYS = {"天河机场": "天河机场", "汉口站": "汉口火车站", "武汉站": "武汉火车站", "武昌站": "武昌火车站"}
 # Official community material: the 智民里 venue is by 江汉路站 (lines 2/6) and 大智路站 (lines 1/6).
 VENUE_STATIONS = {"智民里": "江汉路", "数命SPU社区": "江汉路"}
 METRO_STATIONS = {s for stops in snapshot("metro_lines.json")["lines"].values() for s in stops}
@@ -369,7 +369,8 @@ class Toolbox:
         for n in names[:5]:
             p = PLACES[n]
             found.append({"name": n, "plannable": bool(p.get("minutes")), "area": p.get("area"), "zone": p.get("zone"),
-                          "suggested_minutes": p.get("minutes"), "metro": _metro(n),
+                          "suggested_minutes": p.get("minutes"), "metro": _metro(n), "can_anchor_trip": True,
+                          "usage": "可设为出发或接送终点" if n in GATEWAYS else "游览地点",
                           "map_url": "https://uri.amap.com/search?keyword=" + n + "&city=武汉"})
         if not found:
             atlas = [r for r in ATLAS if name in r["name"]][:3]

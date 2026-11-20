@@ -638,5 +638,41 @@
     "label": "木兰云雾山景区",
     "source": "https://uri.amap.com/marker?position=114.213185%2C31.123630&name=%E6%9C%A8%E5%85%B0%E4%BA%91%E9%9B%BE%E5%B1%B1%E6%99%AF%E5%8C%BA&coordinate=gaode",
     "usage": "地图参考点：木兰云雾山景区，以实际入口为准"
+  },
+  "天河机场": {
+    "lat": 30.772976,
+    "lon": 114.211126,
+    "crs": "WGS84 (approx.)",
+    "label": "天河机场地铁参考点",
+    "source": "https://map.amap.com/service/subway?srhdata=4201_drw_wuhan.json",
+    "source_gcj02": [
+      114.216618,
+      30.770624
+    ],
+    "usage": "枢纽地铁站参考点；接人时请约定具体出口"
+  },
+  "武汉站": {
+    "lat": 30.609649,
+    "lon": 114.418843,
+    "crs": "WGS84 (approx.)",
+    "label": "武汉站地铁参考点",
+    "source": "https://map.amap.com/service/subway?srhdata=4201_drw_wuhan.json",
+    "source_gcj02": [
+      114.424376,
+      30.607375
+    ],
+    "usage": "枢纽地铁站参考点；接人时请约定具体出口"
+  },
+  "武昌站": {
+    "lat": 30.533045,
+    "lon": 114.311001,
+    "crs": "WGS84 (approx.)",
+    "label": "武昌站地铁参考点",
+    "source": "https://map.amap.com/service/subway?srhdata=4201_drw_wuhan.json",
+    "source_gcj02": [
+      114.316449,
+      30.530624
+    ],
+    "usage": "枢纽地铁站参考点；接人时请约定具体出口"
   }
 }

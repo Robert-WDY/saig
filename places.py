@@ -25,6 +25,10 @@ ROWS = [
     ("武汉大学","武昌珞珈山，校内参观需核实","武昌珞珈",60,"book.175.1"),
 ]
 PLACES = {n:dict(name=n, area=a, zone=z, minutes=m, evidence=s) for n,a,z,m,s in ROWS}
+GATEWAYS = {"天河机场": "天河机场", "汉口站": "汉口火车站", "武汉站": "武汉火车站", "武昌站": "武昌火车站"}
+for hub, zone in (("武汉站", "武昌铁路枢纽"), ("武昌站", "武昌车站"), ("天河机场", "黄陂机场")):
+    PLACES[hub] = dict(name=hub, area=GATEWAYS[hub], zone=zone, region="黄陂" if hub == "天河机场" else "武昌",
+                       minutes=0, evidence="metro_lines.json", gateway=True)
 for name, zone, minutes, source in json.loads((Path(__file__).parent/"data/guide_places.json").read_text("utf8")):
     PLACES[name] = dict(name=name, area=zone, zone=zone, minutes=minutes, evidence=source)
 
