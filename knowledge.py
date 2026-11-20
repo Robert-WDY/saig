@@ -37,7 +37,16 @@ class Knowledge:
     def __init__(self, curated=None):
         self.curated = curated if curated is not None else json.loads((DATA/"official.json").read_text(encoding="utf8"))
         self.rows = list(self.curated)
-        from places import ATLAS
+        from places import ATLAS, GATEWAYS
+        network = json.loads((DATA/"metro_lines.json").read_text(encoding="utf8"))
+        access = []
+        for hub, station in GATEWAYS.items():
+            lines = [name for name, stops in network["lines"].items() if station in stops]
+            if lines:
+                access.append(f"{hub}对应地铁站「{station}」，线路有{'、'.join(lines)}。")
+        self.rows.append(dict(id="metro_lines.json", category="wuhan", title="武汉铁路枢纽与机场的地铁接驳",
+                              text="".join(access), locator="武汉线路图 · 枢纽站名", source=network["source"],
+                              edition="线路图核对 "+network["checked"]))
         for place in ATLAS:
             if "official_name" in place:
                 self.rows.append(dict(id=place["id"], category="attraction", title=place["official_name"]+" · 名录",
