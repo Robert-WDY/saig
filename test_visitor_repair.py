@@ -138,3 +138,12 @@ class VisitorRepairTests(unittest.TestCase):
         self.assertEqual(set(order), set(wanted))
         self.assertFalse(proof["violations"])
         self.assertEqual(proof, evaluate(confirmed, order))
+
+    def test_cross_river_transfer_can_fit_by_reordering_existing_stops(self):
+        old = ["汉口江滩", "知音号", "武汉天地", "张之洞与武汉博物馆", "古琴台", "汉阳造"]
+        required = old + ["黎黄陂路"]
+        c = {**new_contract(), "origin": "汉口站", "must": ["古琴台", "黎黄陂路"]}
+        order, proof = solve(c, old, [], add=required, reoptimize=True)
+        self.assertEqual(set(order), set(required))
+        self.assertFalse(proof["violations"])
+        self.assertLessEqual(proof["arrival"], c["end"])

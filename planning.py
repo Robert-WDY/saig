@@ -261,26 +261,11 @@ def reorder(c, stops, candidates=15, diagnostics=None):
     if len(stops) > 12 or len(stops) < 2:
         return None
     deadline = monotonic() + remaining(6)
-    if len(stops) >= 8:
-        feasible, later = [], []
-        for order in _crowded_orders(c, stops, deadline):
-            proof = evaluate(c, order)
-            if not proof["violations"]:
-                feasible.append((proof["arrival"], order, proof))
-            elif diagnostics is not None:
-                finish = proof["arrival"] + c["buffer"]
-                if c["end"] < finish < 1440 and not evaluate({**c, "end": finish}, order)["violations"]:
-                    later.append(finish)
-        if feasible:
-            _, order, proof = min(feasible, key=lambda row:row[0])
-            return order, proof
-        if later:
-            diagnostics["later_end"] = min(later)
-        if len(stops) > 8 or monotonic() >= deadline:
-            return None
     scored = []
     score_deadline = deadline - min(1, max(0, deadline - monotonic()) / 3)
-    for order in permutations(stops):
+    live = settings(c.get("mobility", {"rules": []})).get("出行日期")
+    short_orders = permutations(stops) if len(stops) < 8 or (len(stops) == 8 and live) else ()
+    for order in short_orders:
         if monotonic() >= score_deadline:
             break
         t, prev, idle, km, moving = c["start"], c["origin"], 0, 0.0, 0
@@ -314,7 +299,23 @@ def reorder(c, stops, candidates=15, diagnostics=None):
         rank = (legs + idle * 0.5 + proof["arrival"] * 0.05, proof["arrival"])
         if best is None or rank < best[0]:
             best = (rank, list(order), proof)
-    return best and (best[1], best[2])
+    if best:
+        return best[1], best[2]
+    feasible, later = [], []
+    for order in _crowded_orders(c, stops, deadline):
+        proof = evaluate(c, order)
+        if not proof["violations"]:
+            feasible.append((proof["arrival"], order, proof))
+        elif diagnostics is not None:
+            finish = proof["arrival"] + c["buffer"]
+            if c["end"] < finish < 1440 and not evaluate({**c, "end": finish}, order)["violations"]:
+                later.append(finish)
+    if feasible:
+        _, order, proof = min(feasible, key=lambda row:row[0])
+        return order, proof
+    if later:
+        diagnostics["later_end"] = min(later)
+    return None
 
 
 def solve(c, prior, guide_order, add=(), remove=(), old_stops=(), replacements=(), preserve_guide_order=False, reoptimize=False):
