@@ -1,5 +1,5 @@
 "use strict";
-var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+var _a, _b, _c, _d, _e, _f, _g, _h;
 const get = (id) => document.getElementById(id);
 const question = get("question");
 const chatWindow = get("chat-window");
@@ -540,7 +540,7 @@ function daySection(number, day, open, before = null) {
   return details;
 }
 function planCard(plan) {
-  var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2;
+  var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i;
   const selected = selectedPlan === plan.id;
   const card = node("article", selected ? "plan selected" : "plan");
   const heading = button("plan-header", "", () => {
@@ -577,7 +577,7 @@ function planCard(plan) {
     content.append(summary);
   }
   for (const [day, details] of Object.entries(plan.cards)) {
-    const before = ((_h2 = plan.changedDays) == null ? void 0 : _h2.includes(day)) ? (_i2 = plan.previous) == null ? void 0 : _i2[day] : null;
+    const before = ((_h2 = plan.changedDays) == null ? void 0 : _h2.includes(day)) ? (_i = plan.previous) == null ? void 0 : _i[day] : null;
     const section = daySection(day, details, day === openDay, before);
     section.addEventListener("toggle", () => {
       if (section.isConnected && section.open) {
@@ -639,8 +639,9 @@ function currentComparison() {
 }
 function updateMapLink() {
   const url = selectedPlan ? "/routes?" + new URLSearchParams({ plan: selectedPlan, day: openDay }) : "/routes";
-  get("city-plan-link").href = url.replace("/routes", "/city");
-  for (const link2 of [get("jump-map"), document.querySelector(".nav-map")]) link2.href = url;
+  const city = url.replace("/routes", "/city");
+  for (const link2 of [get("city-plan-link"), get("board-map-open")]) if (link2) link2.href = city;
+  for (const link2 of [get("jump-map"), document.querySelector(".nav-map")]) if (link2) link2.href = url;
 }
 let boardMap = null, boardLayer = null, boardKey = "";
 async function drawBoardMap() {
@@ -725,11 +726,9 @@ function renderTakeaway() {
   bar.hidden = !plan || !Object.keys(plan.cards || {}).length;
   const input = get("trip-date");
   const fixed = plan && ((_b2 = (_a2 = Object.values(plan.cards || {})[0]) == null ? void 0 : _a2.contract) == null ? void 0 : _b2.date);
-  if (fixed && plan.id === "preview") input.value = fixed;
-  if (!input.value) {
-    const tomorrow = new Date(Date.now() + 864e5);
-    input.value = tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
-  }
+  const tomorrow = new Date(Date.now() + 864e5);
+  input.value = fixed || tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
+  get("trip-ics").title = "第 1 天按 " + input.value + " 加入日历（告诉江豚出发日期可改）";
 }
 (_d = get("trip-ics")) == null ? void 0 : _d.addEventListener("click", () => {
   const plan = takeawayPlan();
@@ -754,7 +753,7 @@ function askNowPlan(place) {
   question.setSelectionRange(at, at);
   get("progress").textContent = "先填上你现在所在的地铁站或地标";
 }
-(_e = get("now-plan")) == null ? void 0 : _e.addEventListener("click", async () => {
+async function startNowPlan() {
   if (state.pending) return;
   if (!window.isSecureContext || !navigator.geolocation) return askNowPlan();
   get("progress").textContent = "正在获取你的位置…";
@@ -770,8 +769,9 @@ function askNowPlan(place) {
     get("progress").textContent = "";
     askNowPlan(best && best.d < 6 ? best.name : null);
   }, () => askNowPlan(), { timeout: 8e3, maximumAge: 3e5 });
-});
-(_f = get("trip-amap")) == null ? void 0 : _f.addEventListener("click", async () => {
+}
+for (const el of document.querySelectorAll("[data-now-plan]")) el.addEventListener("click", startNowPlan);
+(_e = get("trip-amap")) == null ? void 0 : _e.addEventListener("click", async () => {
   const plan = takeawayPlan();
   if (!plan) return;
   if (!routePoints) routePoints = await WuhanMap.readJSON("/route-points").catch(() => ({}));
@@ -779,7 +779,7 @@ function askNowPlan(place) {
   const url = Amap.day(plan.cards[day]);
   if (url) window.open(url, "_blank", "noopener");
 });
-(_g = get("trip-copy")) == null ? void 0 : _g.addEventListener("click", async () => {
+(_f = get("trip-copy")) == null ? void 0 : _f.addEventListener("click", async () => {
   const plan = takeawayPlan(), button2 = get("trip-copy");
   if (!plan) return;
   const text = tripText(plan);
@@ -798,13 +798,14 @@ function renderBoard() {
   updateMapLink();
   renderTakeaway();
   drawBoardMap();
-  get("board-summary").textContent = state.plans.length ? state.plans.length + " 份行程 · 可继续追问修改" : "查看路线和方案差异";
+  get("board-summary").textContent = state.plans.length ? "可以继续跟江豚说怎么改" : "排好的行程会出现在这里";
+  get("jump-map").hidden = !state.plans.length;
+  const comparable = state.comparison || state.plans.filter((p) => p.id !== "preview").length > 1;
+  get("board-tabs").hidden = !comparable;
+  if (!comparable && !get("comparison").hidden) showTab("plans");
   const plans = get("plans");
   if (!state.plans.length) {
-    plans.replaceChildren(emptyBoard("行程会显示在这里", "告诉接待员你有几天、想去哪里，就可以开始排路线。", {
-      label: "生成并比较方案 ↗",
-      click: () => sendText(planPrompt)
-    }));
+    plans.replaceChildren(emptyBoard("还没有行程", "跟江豚说玩几天、住哪里，比如「帮我排两天，住江汉路」。"));
   } else {
     const grid = node("div", "plan-grid");
     grid.append(...state.plans.map(planCard));
@@ -909,6 +910,7 @@ function renderFollowups() {
     button("chip", "问数命 SPU 社区", () => fill(document.querySelector(".skill[data-skill='community']").dataset.prompt)),
     button("chip", "问 SAIG 参赛", () => fill(document.querySelector(".skill[data-skill='saig']").dataset.prompt))
   );
+  if (state.plans.length && el.children.length < 4) el.append(button("chip", "临时安排：接下来 3 小时", startNowPlan));
 }
 function render() {
   renderMessages();
@@ -1112,13 +1114,13 @@ async function openFlyover(card, title) {
   const say = typeof Receptionist !== "undefined" && Receptionist.say ? (text) => Receptionist.say(text) : null;
   window.Flyover.open({ stops, title, landmarks: typeof Landmarks !== "undefined" ? Landmarks.LIST : [], say });
 }
-(_h = get("fly-plan")) == null ? void 0 : _h.addEventListener("click", () => {
+(_g = get("fly-plan")) == null ? void 0 : _g.addEventListener("click", () => {
   const plan = takeawayPlan();
   if (!plan) return;
   const day = plan.cards[openDay] ? openDay : Object.keys(plan.cards).sort((a, b) => a - b)[0];
   openFlyover(plan.cards[day], "3D 飞览 · ".concat(plan.title || "行程", " 第 ").concat(day, " 天"));
 });
-(_i = get("fly-demo")) == null ? void 0 : _i.addEventListener("click", () => openFlyover(null, "3D 飞览武汉 · 经典一日"));
+(_h = get("fly-demo")) == null ? void 0 : _h.addEventListener("click", () => openFlyover(null, "3D 飞览武汉 · 经典一日"));
 const tourButton = get("judge-tour");
 if (tourButton) tourButton.addEventListener("click", async () => {
   if (state.pending || tourButton.disabled) return;

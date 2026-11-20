@@ -102,3 +102,11 @@
 .landmark-themes button{flex:none;border:0;background:#e5ecfb;color:#12399d;min-height:28px;padding:0 11px}
 .landmark-themes button[aria-pressed="true"]{background:#12399d;color:#fff}
 @media(max-width:560px){.landmark-themes{left:auto}}
+
+.more-filters{position:relative}
+.more-filters summary{cursor:pointer;list-style:none;min-height:38px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border:1px solid #c6cadd;border-radius:6px;background:#fffdf7;font-size:13px;color:#172751}
+.more-filters summary::-webkit-details-marker{display:none}
+.more-filters summary::after{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+.more-filters[open] summary::after{transform:rotate(-135deg) translateY(-1px)}
+.more-filters>div{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+@media(min-width:801px){.more-filters>div{position:absolute;z-index:600;top:100%;left:0;padding:10px;background:#fffaf0;border:1px solid #c6cadd;border-radius:6px;box-shadow:0 6px 18px #1727511f;width:max-content}}

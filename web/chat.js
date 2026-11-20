@@ -600,8 +600,9 @@ function currentComparison() {
 
 function updateMapLink() {
   const url = selectedPlan ? "/routes?" + new URLSearchParams({plan: selectedPlan, day: openDay}) : "/routes";
-  get("city-plan-link").href=url.replace("/routes","/city");
-  for (const link of [get("jump-map"), document.querySelector(".nav-map")]) link.href = url;
+  const city = url.replace("/routes", "/city");
+  for (const link of [get("city-plan-link"), get("board-map-open")]) if (link) link.href = city;
+  for (const link of [get("jump-map"), document.querySelector(".nav-map")]) if (link) link.href = url;
 }
 
 let boardMap = null, boardLayer = null, boardKey = "";
@@ -673,13 +674,12 @@ function renderTakeaway() {
   const bar = get("trip-takeaway"), plan = takeawayPlan();
   if (!bar) return;
   bar.hidden = !plan || !Object.keys(plan.cards || {}).length;
+  // The calendar uses the trip's own date when the visitor gave one, otherwise tomorrow.
   const input = get("trip-date");
   const fixed = plan && Object.values(plan.cards || {})[0]?.contract?.date;
-  if (fixed && plan.id === "preview") input.value = fixed;
-  if (!input.value) {
-    const tomorrow = new Date(Date.now() + 86400000);
-    input.value = tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
-  }
+  const tomorrow = new Date(Date.now() + 86400000);
+  input.value = fixed || tomorrow.getFullYear() + "-" + String(tomorrow.getMonth() + 1).padStart(2, "0") + "-" + String(tomorrow.getDate()).padStart(2, "0");
+  get("trip-ics").title = "第 1 天按 " + input.value + " 加入日历（告诉江豚出发日期可改）";
 }
 get("trip-ics")?.addEventListener("click", () => {
   const plan = takeawayPlan();
@@ -703,7 +703,7 @@ function askNowPlan(place) {
   question.setSelectionRange(at, at);
   get("progress").textContent = "先填上你现在所在的地铁站或地标";
 }
-get("now-plan")?.addEventListener("click", async () => {
+async function startNowPlan() {
   if (state.pending) return;
   if (!window.isSecureContext || !navigator.geolocation) return askNowPlan();
   get("progress").textContent = "正在获取你的位置…";
@@ -719,7 +719,8 @@ get("now-plan")?.addEventListener("click", async () => {
     get("progress").textContent = "";
     askNowPlan(best && best.d < 6 ? best.name : null);
   }, () => askNowPlan(), {timeout: 8000, maximumAge: 300000});
-});
+}
+for (const el of document.querySelectorAll("[data-now-plan]")) el.addEventListener("click", startNowPlan);
 
 get("trip-amap")?.addEventListener("click", async () => {
   const plan = takeawayPlan();
@@ -743,12 +744,15 @@ function renderBoard() {
   updateMapLink();
   renderTakeaway();
   drawBoardMap();
-  get("board-summary").textContent = state.plans.length ? state.plans.length + " 份行程 · 可继续追问修改" : "查看路线和方案差异";
+  get("board-summary").textContent = state.plans.length ? "可以继续跟江豚说怎么改" : "排好的行程会出现在这里";
+  // Tools appear only when they have something to act on.
+  get("jump-map").hidden = !state.plans.length;
+  const comparable = state.comparison || state.plans.filter(p => p.id !== "preview").length > 1;
+  get("board-tabs").hidden = !comparable;
+  if (!comparable && !get("comparison").hidden) showTab("plans");
   const plans = get("plans");
   if (!state.plans.length) {
-    plans.replaceChildren(emptyBoard("行程会显示在这里", "告诉接待员你有几天、想去哪里，就可以开始排路线。", {
-      label: "生成并比较方案 ↗", click: () => sendText(planPrompt)
-    }));
+    plans.replaceChildren(emptyBoard("还没有行程", "跟江豚说玩几天、住哪里，比如「帮我排两天，住江汉路」。"));
   } else {
     const grid = node("div", "plan-grid");
     grid.append(...state.plans.map(planCard));
@@ -847,6 +851,7 @@ function renderFollowups() {
     button("chip", "问数命 SPU 社区", () => fill(document.querySelector(".skill[data-skill='community']").dataset.prompt)),
     button("chip", "问 SAIG 参赛", () => fill(document.querySelector(".skill[data-skill='saig']").dataset.prompt))
   );
+  if (state.plans.length && el.children.length < 4) el.append(button("chip", "临时安排：接下来 3 小时", startNowPlan));
 }
 
 function render() {

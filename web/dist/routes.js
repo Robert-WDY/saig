@@ -379,7 +379,8 @@ function renderRoute(plan, refit = true) {
   progress.textContent = count ? "" : "本日地点坐标待核实";
   const url = "/routes?" + new URLSearchParams({ plan: plan.id, day });
   if (location.pathname + location.search !== url) history.replaceState(null, "", url);
-  document.querySelector(".nav-map").href = url;
+  const navMap = document.querySelector(".nav-map");
+  if (navMap) navMap.href = url;
   try {
     const key = "saig-visitor-workspace-v1";
     const workspace = JSON.parse(sessionStorage.getItem(key));

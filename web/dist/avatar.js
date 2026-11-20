@@ -4,7 +4,7 @@ const Receptionist = (() => {
   const voiceKey = "saig-receptionist-voice";
   const synth = "speechSynthesis" in window ? window.speechSynthesis : null;
   const status = {
-    idle: "在线 · 武汉、社区、行程、SAIG 都能问",
+    idle: "在线",
     thinking: "正在查资料、排路线…",
     speaking: "正在为你讲解",
     happy: "好啦，看看合不合心意？",
