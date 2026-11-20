@@ -344,6 +344,10 @@ class Agent:
             except Invalid as err:
                 failures.append(str(err))
                 trace.append({"day":key,"attempt":guide_id,"audit_error":str(err)})
+                # For an existing route with all survivor stops fixed, solve() uses
+                # the saved order and the edit. Another guide cannot change either input.
+                if prior and not replacements and set(prior) - set(op.get("remove", [])) <= set(op.get("add", [])):
+                    raise
                 if len(failures)==1 and not op.get("strict_template"):
                     retry=self.model.ask("""重新规划检索策略。上一候选未通过程序审核。不能修改约束。
 可换攻略检索词，或判断所有硬约束无法兼容。输出 {query:新的简短检索词}，无可行方案时返回空字符串。""",

@@ -15,7 +15,7 @@ from jsonschema import Draft202012Validator
 from knowledge import TOOLS as TOPICS
 from places import PLACES, ATLAS, region
 from planning import Invalid
-from trip_contract import GUIDES, trip_review
+from trip_contract import GUIDES, trip_review, settings
 from datetime import date as _date, timedelta as _td
 from planning import HOURS, WEEKDAYS, WEEKDAY_CN, window_of, closed_on, evaluate, new_contract, reorder
 from datetime import datetime as _dt, timezone as _tz
@@ -24,7 +24,7 @@ from transport import ACCESS, metro_route, snapshot, straight_km
 from weather import forecast
 
 SKILL_DIR = Path(__file__).parent / "skills"
-WRITE_TOOLS = {"plan_trip", "edit_trip", "append_day", "append_stops", "remember", "multi_plan"}
+WRITE_TOOLS = {"plan_trip", "edit_trip", "append_day", "append_stops", "remember", "multi_plan", "resolve_preview"}
 
 # Everyday names visitors use for catalogue places.
 ALIASES = {
@@ -251,11 +251,35 @@ plan_fields = SCHEMAS["plan_trip"]["parameters"]["properties"]
 plan_fields["replace_existing"] = {"type": "boolean", "description": "仅游客明确要整份推倒重来时为 true。续排用 append_day 或 append_stops。"}
 day_field = {"type": "integer", "minimum": 1, "maximum": 5}
 place_field = {"type": "string", "minLength": 1}
+mode_field = {"type": "array", "uniqueItems": True, "minItems": 1, "items": {
+    "enum": ["walk", "metro", "transit", "taxi"]}, "description": "硬性允许的交通方式。仅地铁和步行填 walk、metro；transit 可含公交。"}
+plan_fields.update(allowed_modes=mode_field, origin=place_field, destination=place_field)
+plan_fields["must"]["description"] = "仅列游客明确要求或指代的必去景点。泛指老街、历史、散步等写 interests，由排程器推荐具体站点。"
+atlas_topics = sorted({r["topic"] for r in ATLAS if r.get("topic")})
+plan_fields["exclusions"] = {"type": "array", "description": "每一条都区分仅当天和整个旅行。游客说今天/这天/留到另一天用 day；不想进博物馆用 topics 的展馆文博。",
+    "items": {"type": "object", "additionalProperties": False, "required": ["scope"], "properties": {
+        "scope": {"enum": ["day", "trip"]}, "day": day_field,
+        "places": {"type": "array", "items": place_field}, "topics": {"type": "array", "items": {"enum": atlas_topics}}}}}
+read_fields = SCHEMAS["get_trip"]["parameters"]["properties"]
+read_fields.update(day=day_field, max_walk_m={"type": "integer", "minimum": 1}, allowed_modes=mode_field)
+SCHEMAS["get_trip"]["description"] = "读取正式路线及交通明细。核对已有行程步行上限或交通方式时填 max_walk_m、allowed_modes，只核对不修改。"
+edit_fields = SCHEMAS["edit_trip"]["parameters"]["properties"]
+edit_fields["preview"] = {"type": "boolean", "description": "先看看、假设、不确定、只比较改动效果时为 true。从原卡计算，保留正式行程。"}
+action_fields = edit_fields["actions"]["items"]["properties"]
+action_fields["type"]["enum"].append("set_transport")
+action_fields.update(allowed_modes=mode_field, max_walk_m={"type": "integer", "minimum": 1})
+action_fields["day"] = {**day_field, "description": "该动作修改的旅行日，省略时沿用整组的 day。跨天移动的出发日填 day，目标填 to_day。"}
+SCHEMAS["multi_plan"]["parameters"]["properties"]["independent_options"] = {
+    "type": "boolean", "description": "只有明确新建相互独立的方案才设 true。比较当前正式卡的假设改动请用 edit_trip 的 preview。"}
+SCHEMAS["resolve_preview"] = {"description": "查看、采用或放弃上一次试排，保留版本绑定。",
+    "parameters": {"type": "object", "additionalProperties": False, "required": ["action"],
+                   "properties": {"action": {"enum": ["view", "adopt", "discard"]}}}}
 SCHEMAS["append_day"] = {
     "description": "在正式行程末尾新增一天，原有各天完整保留。origin 是这一天的实际出发点，destination 是明确指定的终点。",
     "parameters": {"type": "object", "additionalProperties": False, "required": ["day"], "properties": {
-        **{k: plan_fields[k] for k in ("start", "end", "interests", "pace", "avoid", "meals", "max_walk_m")},
-        "day": day_field, "origin": place_field, "destination": place_field, "must": plan_fields["avoid"]}}}
+        **{k: plan_fields[k] for k in ("start", "end", "interests", "pace", "avoid", "meals", "max_walk_m", "allowed_modes")},
+        "day": day_field, "origin": place_field, "destination": place_field,
+        "must": {"type": "array", "maxItems": 8, "items": place_field, "description": plan_fields["must"]["description"]}}}}
 SCHEMAS["append_stops"] = {
     "description": "在已有某天最后一站之后继续游玩，保持原有每站的顺序和时间。after 是新增活动最早开始时刻，end 仅在游客明确更改结束时间时填写，排不下会返回原因。",
     "parameters": {"type": "object", "additionalProperties": False, "required": ["day"], "properties": {
@@ -265,6 +289,12 @@ SCHEMAS["append_stops"] = {
                    "description": "游客明确点名的新增站点，按给定次序追加；未点名时省略，由程序就近选择"}}}}
 TOOL_DEFS = [{"type": "function", "function": {"name": n, "description": s["description"], "parameters": s["parameters"]}}
              for n, s in SCHEMAS.items()]
+# The old unscoped argument still works for saved clients; new model calls must choose a scope.
+for definition in TOOL_DEFS:
+    if definition["function"]["name"] == "plan_trip":
+        params = deepcopy(definition["function"]["parameters"])
+        del params["properties"]["avoid"]
+        definition["function"]["parameters"] = params
 VALIDATORS = {n: Draft202012Validator(s["parameters"]) for n, s in SCHEMAS.items()}
 
 
@@ -277,8 +307,9 @@ def skill_index():
 
 
 class Toolbox:
-    def __init__(self, agent, draft, trace):
+    def __init__(self, agent, draft, trace, utterance=""):
         self.agent, self.draft, self.trace = agent, draft, trace
+        self.utterance = utterance
         self.refs = {}
         self.mode = None
         self.preview = None
@@ -457,13 +488,37 @@ class Toolbox:
         return {"ok": True, "summary_line": line, "opening_notes": opening_notes({"1": card}) or None,
                 "reminder": "逐字给出 summary_line，一句话说为什么这样排；说明已放在行程板「临时安排」，不影响正式行程。"}
 
-    def get_trip(self):
+    def get_trip(self, day=None, max_walk_m=None, allowed_modes=None):
         days = self.draft.get("days") or {}
         if not days:
             return {"ok": True, "has_trip": False, "note": "当前还没有行程。"}
-        return {"ok": True, "has_trip": True, "summary_lines": day_lines(days),
-                "days": {k: {"start": hhmm(c["contract"]["start"]), "end": hhmm(c["contract"]["end"]),
-                             "origin": c["contract"].get("origin"), "stops": c["order"]} for k, c in days.items()}}
+        if day is not None:
+            if str(day) not in days:
+                raise Invalid("当前没有这一天。")
+            days = {str(day): days[str(day)]}
+        result = {}
+        for k, card in days.items():
+            c = card["contract"]
+            legs = []
+            mobility = settings(c.get("mobility", {"rules": []}))
+            modes = set(allowed_modes or filter(None, mobility.get("交通方式", "").split(",")))
+            cap = max_walk_m if max_walk_m is not None else mobility.get("单段步行上限米")
+            if "transit" in modes:
+                modes.add("metro")
+            for leg in card["audit"].get("legs", []):
+                entry = {f: leg.get(f) for f in ("origin", "destination", "mode", "minutes", "walk_m", "estimated", "source")}
+                if modes:
+                    entry["mode_check"] = "符合" if leg["mode"] in modes else "无法验证" if leg["mode"] == "estimate" else "不符合"
+                if cap is not None:
+                    distance = leg.get("walk_m")
+                    entry["walk_check"] = ("无法验证" if distance is None or leg.get("estimated") else
+                                           "符合" if distance <= cap else "超限")
+                legs.append(entry)
+            result[k] = {"start": hhmm(c["start"]), "end": hhmm(c["end"]), "date": c.get("date"),
+                         "origin": c.get("origin"), "destination": c.get("destination"), "stops": card["order"],
+                         "transport_rules": mobility, "legs": legs, "has_leg_record": "legs" in card["audit"]}
+        return {"ok": True, "has_trip": True, "summary_lines": day_lines(days), "days": result,
+                "reminder": "逐段按保存的 mode、walk_m、来源和核对结果回答。未知或估算不能算满足硬上限。"}
 
     def read_skill(self, id):
         path = SKILL_DIR / f"{re.sub(r'[^a-z0-9-]', '', id)}.md"
@@ -489,6 +544,7 @@ class Toolbox:
         self.draft.setdefault("first_days", deepcopy(self.draft.get("days") or days))
         self.draft["days"] = days
         self.draft.pop("pending_days", None)
+        self.draft.pop("preview_basis", None)
         self.mode = mode
 
     def _fill_day(self, key, card, op, used, limit=3):
@@ -542,31 +598,59 @@ class Toolbox:
         return card, None
 
     def plan_trip(self, days, start="09:00", end="18:00", stay=None, interests="", must=(), avoid=(), pace="normal", max_walk_m=None,
-                  start_date=None, meals=True, replace_existing=False):
+                  start_date=None, meals=True, replace_existing=False, allowed_modes=None, exclusions=(), origin=None, destination=None):
         if self.draft.get("days") and not replace_existing:
             raise Invalid("已有正式行程。续排下一天用 append_day，当天后面加站用 append_stops；整份重做需要游客明确要求。")
-        result = self._plan_days(days, start, end, stay, interests, must, avoid, pace, max_walk_m, start_date, meals)
-        self.draft["trip_defaults"] = {"avoid": list(avoid), "pace": pace, "max_walk_m": max_walk_m, "stay": stay, "meals": meals}
+        global_bans = set(avoid)
+        local_bans = {}
+        for rule in exclusions:
+            topics = rule.get("topics", [])
+            names = {self._place(n) for n in rule.get("places", [])}
+            names.update(r["name"] for r in ATLAS if r.get("topic") in topics
+                         and r["name"] in PLACES and PLACES[r["name"]]["minutes"])
+            if not names:
+                raise Invalid("排除条件缺少地点或地点分类。")
+            if rule["scope"] == "trip":
+                global_bans.update(names)
+            else:
+                day = rule.get("day", 1 if days == 1 else None)
+                if day is None or day > days:
+                    raise Invalid("请指定排除条件对应的旅行日。")
+                local_bans.setdefault(day, set()).update(names)
+        result = self._plan_days(days, start, end, stay, interests, must, sorted(global_bans), pace, max_walk_m, start_date, meals,
+                                 origin=origin, destination=destination, allowed_modes=allowed_modes, local_bans=local_bans)
+        self.draft["trip_defaults"] = {"scoped": True, "avoid": sorted(global_bans), "allowed_modes": allowed_modes, "pace": pace, "max_walk_m": max_walk_m, "stay": stay, "meals": meals}
         return result
 
+    def named_in_request(self, name):
+        place, _ = resolve(name)
+        return bool(place and (place in self.utterance or any(
+            alias in self.utterance.lower() for alias, target in ALIASES.items() if target == place)))
+
     def append_day(self, day, origin=None, destination=None, start="09:00", end="18:00",
-                   interests="", must=(), avoid=(), pace=None, max_walk_m=None, meals=None):
+                   interests="", must=(), avoid=(), pace=None, max_walk_m=None, meals=None, allowed_modes=None):
         previous = self.draft.get("days") or {}
         if not previous or day != max(map(int, previous)) + 1:
             raise Invalid("只能在现有行程后新增紧接的下一天；修改已有日期请用 edit_trip。")
         last = previous[str(day - 1)]["contract"]
         defaults = self.draft.get("trip_defaults", {})
         common = set.intersection(*(set(v["contract"]["exclude"]) for v in previous.values()))
-        banned = set(defaults.get("avoid", common)) | set(avoid)
+        inherited = {self._place(n) for n in defaults.get("avoid", common)}
+        # A new, named requirement supersedes an inherited exclusion for this day alone.
+        # Old cards cannot distinguish day and trip exclusions.
+        inherited.difference_update(self._place(n) for n in must
+                                    if self.named_in_request(n) or not defaults.get("scoped"))
+        banned = inherited | set(avoid)
         date = (_date.fromisoformat(last["date"]) + _td(days=1)).isoformat() if last.get("date") else None
         return self._plan_days(1, start, end, defaults.get("stay"), interests, [{"place": n} for n in must],
                                sorted(banned), pace or defaults.get("pace", "normal"),
                                max_walk_m or defaults.get("max_walk_m"), date,
                                defaults.get("meals", True) if meals is None else meals,
-                               previous=previous, origin=origin, destination=destination)
+                               previous=previous, origin=origin, destination=destination,
+                               allowed_modes=allowed_modes or defaults.get("allowed_modes"))
 
     def _plan_days(self, days, start, end, stay, interests, must, avoid, pace, max_walk_m, start_date, meals,
-                   previous=None, origin=None, destination=None):
+                   previous=None, origin=None, destination=None, allowed_modes=None, local_bans=None):
         previous = previous or {}
         offset = max(map(int, previous), default=0)
         s, e = _clock(start), _clock(end)
@@ -576,6 +660,8 @@ class Toolbox:
         wanted = [(self._place(m["place"]), m.get("day")) for m in must]
         banned = [self._place(a) for a in avoid]
         rules = []
+        if allowed_modes:
+            rules.append({"field": "交通方式", "subject": "", "value": ",".join(sorted(allowed_modes)), "quote": "限定交通方式"})
         if max_walk_m:
             rules.append({"field": "单段步行上限米", "subject": "", "value": max_walk_m, "quote": f"每段步行不超过{max_walk_m}米"})
         mobility = {"rules": rules, "default_preference": "less_walk" if pace == "relaxed" else "fastest"}
@@ -592,19 +678,20 @@ class Toolbox:
         result, used, meal_notes = {}, {n for card in previous.values() for n in card["order"]}, []
         for d in range(1, days + 1):
             req = list(dict.fromkeys(assigned[d]))
+            excluded = sorted(set(banned) | (local_bans or {}).get(d, set()))
             key = str(d + offset)
             op = {"day": int(key), "query": interests or "第一次来武汉 经典 景点", "set": {"start": hhmm(s), "end": hhmm(e)},
-                  "require": req, "exclude": banned, "mobility": deepcopy(mobility), "avoid": sorted(used - set(req))}
+                  "require": req, "exclude": excluded, "mobility": deepcopy(mobility), "avoid": sorted(used - set(req))}
             if home:
                 op["set"].update(origin=home, destination=home)
             if origin:
                 op["set"]["origin"] = self._place(origin)
             if destination:
                 op["set"]["destination"] = self._place(destination)
-            if previous:
+            if previous or origin:
                 # Already visited places and a departure-only anchor are not sightseeing stops.
                 blocked = used | ({op["set"]["origin"]} if op["set"].get("origin") else set())
-                op["exclude"] = sorted(set(banned) | {n for n in blocked - set(req) if PLACES[n]["minutes"]})
+                op["exclude"] = sorted(set(excluded) | {n for n in blocked - set(req) if PLACES[n]["minutes"]})
                 op["query"] += " " + (op["set"].get("origin") or "")
             if pace == "relaxed":
                 op["set"]["max_stops"] = 4
@@ -621,9 +708,9 @@ class Toolbox:
                     meal_notes.append(f"第{key}天中午加了{food}吃午饭")
             if meals and needs_lunch(s, e) and not lunch_stop(card):
                 meal_notes.append(f"第{key}天中午没排进吃饭的站（附近没有能顺路插入的美食街），建议 12:00 前后在当时所在的站附近吃")
-            if previous:
+            if previous or origin:
                 # Cross-day deduplication applies during selection, not to future user-directed moves.
-                card["contract"]["exclude"] = list(banned)
+                card["contract"]["exclude"] = excluded
             result[key] = card
             used.update(card["order"])
         combined = {**previous, **result}
@@ -724,7 +811,10 @@ class Toolbox:
             if base.get("free"):
                 # A free day gets exactly the stops moved into it, not a fresh guide route.
                 base = {**base, "order": list(stops)}
-            return self.agent.day(key, op, base, self.trace)
+            try:
+                return self.agent.day(key, op, base, self.trace)
+            except Invalid as exc:
+                raise Invalid(f"第{key}天排不下：{exc}") from exc
         if action["type"] == "move_to_day":
             p = self._place(action.get("place", ""))
             if p not in days[a]["order"]:
@@ -741,7 +831,78 @@ class Toolbox:
         return {"ok": True, "summary_lines": day_lines(touched), "opening_notes": opening_notes(touched) or None,
                 "reminder": "回答时逐字给出改动的两天（以「第N天：」开头），一句话说明挪了什么。"}
 
-    def edit_trip(self, day, actions):
+    def resolve_preview(self, action):
+        pending = self.draft.get("pending_days")
+        if not pending:
+            raise Invalid("没有待选择的试排。")
+        current = self.draft["days"]
+        if self.draft.get("preview_basis", current) != current:
+            raise Invalid("正式行程已更新，请从最新行程重新试排。")
+        if action == "view":
+            self.preview = pending
+            self.mode = "preview"
+            return {"ok": True, "original": day_lines(current), "preview": day_lines(pending)}
+        if action == "adopt":
+            self._commit(deepcopy(pending), "edit")
+        else:
+            self.draft.pop("pending_days", None)
+            self.draft.pop("preview_basis", None)
+            self.mode = "edit"
+        return {"ok": True, "summary_lines": day_lines(self.draft["days"])}
+
+    def edit_trip(self, day, actions, preview=False):
+        # Evaluate on an isolated snapshot. Only the final batch becomes one history entry.
+        prior = self.draft.get("days", {})
+        trial = Toolbox(self.agent, deepcopy(self.draft), self.trace)
+        cross = {"clear_day", "swap_days", "move_to_day"}
+        groups = []
+        ordered = list(actions)
+        # Evaluate moves against the requested time budget, regardless of clause order.
+        # Repeated changes to a clock are relative to one another; retain their order.
+        if any(a["type"] in ("move_to_day", "swap_days") for a in actions):
+            clocks = [(a.get("day", day), a["type"]) for a in actions
+                      if a["type"] in ("set_start", "set_end")]
+            def phase(action):
+                target, kind = action.get("day", day), action["type"]
+                if clocks.count((target, kind)) != 1 or str(target) not in prior:
+                    return 1
+                if any(a.get("day", day) == target and a["type"] in ("delay_start", "advance_start") for a in actions):
+                    return 1
+                field = "start" if kind == "set_start" else "end"
+                value = _clock(action.get("time"))
+                old = prior[str(target)]["contract"][field]
+                expands = value < old if field == "start" else value > old
+                return 0 if expands else 2
+            ordered.sort(key=phase)
+        for action in ordered:
+            target = action.get("day", day)
+            if (groups and groups[-1][0] == target and action["type"] not in cross
+                    and groups[-1][1][0]["type"] not in cross):
+                groups[-1][1].append(action)
+            else:
+                groups.append((target, [action]))
+        # A request to free the source day must perform its keeper moves before clearing it.
+        groups.sort(key=lambda item: item[1][0]["type"] == "clear_day")
+        for target, group in groups:
+            result = trial._edit_day(target, group)
+            if not result["ok"]:
+                return {**result, "unchanged": True,
+                        "hint": "整组都未保存，原卡保留。指出错误中的日期和限制，请游客选择如何调整。"}
+        proposed = trial.draft["days"]
+        changed = {k: c for k, c in proposed.items() if prior.get(k) != c}
+        if preview:
+            self.preview = deepcopy(proposed)
+            self.draft["pending_days"] = self.preview
+            self.draft["preview_basis"] = deepcopy(prior)
+            self.mode = "preview"
+            return {"ok": True, "original": day_lines(prior), "preview": day_lines(proposed),
+                    "summary_lines": day_lines(changed or proposed), "reminder": "这是原卡的试排，正式卡未改。"}
+        self._commit(proposed, "edit")
+        if len(groups) > 1:
+            result["summary_lines"] = day_lines(changed)
+        return result
+
+    def _edit_day(self, day, actions):
         key = str(day)
         days = self.draft.get("days") or {}
         old = days.get(key)
@@ -813,6 +974,14 @@ class Toolbox:
                 p = self._place(a.get("place", ""))
                 op["set"]["origin" if t == "set_origin" else "destination"] = p
                 op["reoptimize"] = True
+            elif t == "set_transport":
+                updated = {k: v for k, v in (("交通方式", ",".join(sorted(a.get("allowed_modes", [])))),
+                                              ("单段步行上限米", a.get("max_walk_m"))) if v}
+                if not updated:
+                    raise Invalid("请注明允许的交通方式或步行上限。")
+                op["mobility"]["rules"] = [r for r in op["mobility"]["rules"] if r["field"] not in updated]
+                op["mobility"]["rules"].extend({"field": k, "subject": "", "value": v, "quote": "游客修改交通约束"} for k, v in updated.items())
+                op["reoptimize"] = True
             elif t == "set_duration":
                 p = self._place(a.get("place", ""))
                 if p not in keep:
@@ -860,7 +1029,9 @@ class Toolbox:
             out["reminder"] += "free_time 是空出来的时间，顺口建议怎么用（如午饭、喝茶、附近逛逛）。"
         return out
 
-    def multi_plan(self, request):
+    def multi_plan(self, request, independent_options=False):
+        if self.draft.get("days") and not self.draft.get("options") and not independent_options:
+            raise Invalid("比较现有行程和试排，请用 edit_trip(preview=true)，它会以正式卡为原版。")
         # Alternatives and comparisons keep the reviewed multi-deliverable planner.
         draft, res = self.agent.execute_turn(request, self.draft)
         kernel_memory = self.draft.get("kernel")

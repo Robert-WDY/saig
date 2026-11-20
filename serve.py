@@ -320,6 +320,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300, public=Fa
                             self.wfile.flush()
                         try:
                             result={**kernel_for(current).respond(internal,q,req,emit=emit),"session":sid,"request_id":req}
+                            result["model_calls_this_request"]=attempts
                             result["topics"]=reply_topics(result)
                             if guarded:
                                 result.pop("trace",None)
@@ -339,6 +340,7 @@ def handler(agent, hosts=None, invite="", session_cap=60, day_cap=300, public=Fa
                         with capture(debug) as events,timed("chat"):
                             result={**kernel_for(current).respond(internal,q,req),"session":sid,"request_id":req}
                         if debug:result["events"]=events
+                        result["model_calls_this_request"]=attempts
                         result["topics"]=reply_topics(result)
                         if guarded:
                             result.pop("trace",None)
