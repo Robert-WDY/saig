@@ -52,13 +52,16 @@ class VisitorRepairTests(unittest.TestCase):
         self.assertEqual(self.box.draft, before)
 
     def test_unbound_clock_cannot_silently_disappear(self):
-        self.box.utterance = "第一天十点出发，第二天可以逛到晚上八点。"
+        self.box.utterance = "出门想晚一点，第一天十点出发，第二天可以逛到晚上八点。"
         before = deepcopy(self.box.draft)
         first = {"type": "set_start", "time": "10:00"}
         reply = self.edit([first])
         self.assertTrue(reply["needs_binding"])
         self.assertEqual(self.box.draft, before)
-        self.assertTrue(self.edit([first, {"day": 2, "type": "set_end", "time": "20:00"}])["ok"])
+        result = self.edit([first, {"day": 2, "type": "set_end", "time": "20:00"}])
+        self.assertTrue(result["ok"])
+        self.assertIn("最晚 20:00", result["summary_lines"][-1])
+        self.assertIn("结束游览", result["summary_lines"][-1])
         self.box.utterance = "原来十点出发的那天改到十一点。"
         self.assertTrue(self.edit([{"type": "set_start", "time": "11:00"}], reference_times=["原来十点出发"])["ok"])
 
@@ -99,7 +102,8 @@ class VisitorRepairTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         original = deepcopy(box.draft["days"]["1"])
         self.assertIn("湖北省博物馆", original["contract"]["exclude"])
-        self.assertTrue(box.call("append_day", {"day": 2})["ok"])
+        box.utterance = "还富余一天，可以再排点其他的。"
+        self.assertTrue(box.call("append_day", {"day": 2, "carry_exclusions": []})["ok"])
         self.assertNotIn("湖北省博物馆", box.draft["days"]["2"]["contract"]["exclude"])
         self.assertEqual(original, box.draft["days"]["1"])
 

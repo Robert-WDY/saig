@@ -15,7 +15,7 @@ from jsonschema import Draft202012Validator
 from knowledge import TOOLS as TOPICS
 from places import PLACES, ATLAS, region
 from planning import Invalid
-from quantities import clocks
+from quantities import explicit_clocks
 from trip_contract import GUIDES, trip_review, settings
 from datetime import date as _date, timedelta as _td
 from planning import HOURS, WEEKDAYS, WEEKDAY_CN, window_of, closed_on, evaluate, new_contract, reorder
@@ -155,7 +155,9 @@ def day_lines(days):
         c = card["contract"]
         if c.get("origin") and c["origin"] != card["order"][0]:
             stops = f"{hhmm(c['start'])} {c['origin']}出发 → {stops}"
-        tail = f"（约 {hhmm(card['audit']['arrival'])} 到{c['destination']}）" if c.get("destination") else ""
+        actual = hhmm(card["audit"]["arrival"])
+        finish = f"预计 {actual} 到{c['destination']}" if c.get("destination") else f"预计 {actual} 结束游览"
+        tail = f"（{finish}，最晚 {hhmm(c['end'])}）"
         out.append(f"第{key}天：{stops}{tail}")
     return out
 
@@ -260,7 +262,7 @@ atlas_topics = sorted({r["topic"] for r in ATLAS if r.get("topic")})
 plan_fields["exclusions"] = {"type": "array", "description": "区分仅限一天(day)、当前排的这些天(planned_days)、今后新增的旅行日也要继续排除(future_days)。单日请求里的当天条件默认 day。",
     "items": {"type": "object", "additionalProperties": False, "required": ["scope"], "properties": {
         "scope": {"enum": ["day", "planned_days", "future_days", "trip"]}, "day": day_field,
-        "source_quote": {"type": "string", "description": "future_days 必填，逐字引用游客表达长期偏好或整趟都排除的原话，包含范围。"},
+        "source_quote": {"type": "string", "description": "逐字引用这条排除的原话，包括它适用的时间范围。"},
         "places": {"type": "array", "items": place_field}, "topics": {"type": "array", "items": {"enum": atlas_topics}}}}}
 read_fields = SCHEMAS["get_trip"]["parameters"]["properties"]
 read_fields.update(day=day_field, max_walk_m={"type": "integer", "minimum": 1}, allowed_modes=mode_field)
@@ -284,6 +286,8 @@ SCHEMAS["append_day"] = {
     "parameters": {"type": "object", "additionalProperties": False, "required": ["day"], "properties": {
         **{k: plan_fields[k] for k in ("start", "end", "interests", "pace", "avoid", "meals", "max_walk_m", "allowed_modes")},
         "day": day_field, "origin": place_field, "destination": place_field,
+        "carry_exclusions": {"type": "array", "uniqueItems": True, "items": {"type": "integer", "minimum": 1},
+            "description": "根据游客原话选择续排日仍适用的历史排除条件编号。仅限原来那天或已排日期的不要选，全部失效传空数组。"},
         "must": {"type": "array", "maxItems": 8, "items": place_field, "description": plan_fields["must"]["description"]}}}}
 SCHEMAS["append_stops"] = {
     "description": "在已有某天最后一站之后继续游玩，保持原有每站的顺序和时间。after 是新增活动最早开始时刻，end 仅在游客明确更改结束时间时填写，排不下会返回原因。",
@@ -299,6 +303,7 @@ for definition in TOOL_DEFS:
     if definition["function"]["name"] == "plan_trip":
         params = deepcopy(definition["function"]["parameters"])
         del params["properties"]["avoid"]
+        params["properties"]["exclusions"]["items"]["required"].append("source_quote")
         params["properties"]["exclusions"]["items"]["properties"]["scope"]["enum"].remove("trip")
         definition["function"]["parameters"] = params
 VALIDATORS = {n: Draft202012Validator(s["parameters"]) for n, s in SCHEMAS.items()}
@@ -609,6 +614,7 @@ class Toolbox:
             raise Invalid("已有正式行程。续排下一天用 append_day，当天后面加站用 append_stops；整份重做需要游客明确要求。")
         global_bans = set(avoid)
         local_bans = {}
+        policies = []
         for rule in exclusions:
             topics = rule.get("topics", [])
             names = {self._place(n) for n in rule.get("places", [])}
@@ -617,6 +623,10 @@ class Toolbox:
             if not names:
                 raise Invalid("排除条件缺少地点或地点分类。")
             scope = rule["scope"]
+            if self.utterance:
+                quote = rule.get("source_quote") or self.utterance
+                policies.append({"id": len(policies) + 1, "scope": scope, "names": sorted(names),
+                                 "quote": quote if quote in self.utterance else self.utterance})
             if scope == "future_days" and self.utterance and not (
                     rule.get("source_quote") and rule["source_quote"] in self.utterance):
                 raise Invalid("跨到未来新增日期的排除项需要对应的游客原话。只限当前已排日期请用 day 或 planned_days。")
@@ -633,6 +643,9 @@ class Toolbox:
         result = self._plan_days(days, start, end, stay, interests, must, sorted(global_bans), pace, max_walk_m, start_date, meals,
                                  origin=origin, destination=destination, allowed_modes=allowed_modes, local_bans=local_bans)
         self.draft["trip_defaults"] = {"scoped": True, "avoid": sorted(global_bans), "allowed_modes": allowed_modes, "pace": pace, "max_walk_m": max_walk_m, "stay": stay, "meals": meals}
+        if policies:
+            self.draft["trip_defaults"]["policies"] = policies
+            self.draft["trip_defaults"]["exclusion_request"] = self.utterance
         return result
 
     def named_in_request(self, name):
@@ -641,7 +654,7 @@ class Toolbox:
             alias in self.utterance.lower() for alias, target in ALIASES.items() if target == place)))
 
     def append_day(self, day, origin=None, destination=None, start="09:00", end="18:00",
-                   interests="", must=(), avoid=(), pace=None, max_walk_m=None, meals=None, allowed_modes=None):
+                   interests="", must=(), avoid=(), pace=None, max_walk_m=None, meals=None, allowed_modes=None, carry_exclusions=None):
         previous = self.draft.get("days") or {}
         if not previous or day != max(map(int, previous)) + 1:
             raise Invalid("只能在现有行程后新增紧接的下一天；修改已有日期请用 edit_trip。")
@@ -649,6 +662,13 @@ class Toolbox:
         defaults = self.draft.get("trip_defaults", {})
         common = set.intersection(*(set(v["contract"]["exclude"]) for v in previous.values()))
         inherited = {self._place(n) for n in defaults.get("avoid", common)}
+        policies = defaults.get("policies", [])
+        if policies and self.utterance:
+            if carry_exclusions is None or set(carry_exclusions) - {p["id"] for p in policies}:
+                return {"ok": False, "error": "请按原话确认新增日期继承的排除项编号；没有则传空数组。"}
+            for policy in policies:
+                if policy["id"] in carry_exclusions:
+                    inherited.update(policy["names"])
         # A new, named requirement supersedes an inherited exclusion for this day alone.
         # Old cards cannot distinguish day and trip exclusions.
         inherited.difference_update(self._place(n) for n in must
@@ -874,7 +894,7 @@ class Toolbox:
                 start = prior[str(a.get("day", day))]["contract"]["start"]
                 times.add(start + (1 if a["type"] == "delay_start" else -1) * a["minutes"])
         missing = []
-        for begin, finish, clock in clocks(self.utterance):
+        for begin, finish, clock in explicit_clocks(self.utterance):
             mention = self.utterance[begin:finish].strip()
             minute = _clock(clock)
             possible = {minute}

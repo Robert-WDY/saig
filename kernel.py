@@ -17,7 +17,7 @@ from uuid import uuid4
 import requests
 
 from diagnostics import timed
-from quantities import clocks
+from quantities import explicit_clocks
 from kernel_tools import TOOL_DEFS, WRITE_TOOLS, Toolbox, day_lines, skill_index
 from limits import TurnExpired, charge_attempt, remaining
 from model import ModelError, deepseek_key
@@ -69,6 +69,12 @@ def system_prompt(state):
     if facts:
         lines.append("已记住的游客信息：" + "；".join(f"{a}={b}" for a, b in facts.items()))
     if state.get("days"):
+        policies = state.get("trip_defaults", {}).get("policies", [])
+        if policies:
+            quotes = [{"编号": p["id"], "游客原话": p["quote"]} for p in policies]
+            lines.append("续排另一旅行日时重新核对这些原话。整趟的限制在新增日仍适用，只指原日期的到此为止。"
+                         "把仍适用的编号放入 append_day.carry_exclusions：" + json.dumps(quotes, ensure_ascii=False) +
+                         "\n原请求：" + state["trip_defaults"].get("exclusion_request", ""))
         dates = {k: v["contract"].get("date") for k, v in state["days"].items() if v["contract"].get("date")}
         if dates:
             lines.append("正式旅行日期：" + json.dumps(dates, ensure_ascii=False))
@@ -206,7 +212,7 @@ class Kernel:
         continued = False
         messages = [{"role": "system", "content": system_prompt(draft)}]
         if draft.get("days"):
-            mentions = [q[a:b].strip() for a, b, _ in clocks(q)]
+            mentions = [q[a:b].strip() for a, b, _ in explicit_clocks(q)]
             if mentions:
                 messages[0]["content"] += "\n本轮原话里的时刻：" + "、".join(mentions) + "。若执行编辑，请逐项绑定日期和动作；只作对照的原话填 reference_times。"
         for t in k.get("turns", [])[-HISTORY_TURNS:]:
@@ -224,6 +230,11 @@ class Kernel:
             # so hold its text and show it only once accepted; after tools, stream it live.
             live = bool(trace)
             tools = [tool for tool in TOOL_DEFS if tool["function"]["name"] not in unavailable]
+            if draft.get("trip_defaults", {}).get("policies"):
+                for i, definition in enumerate(tools):
+                    if definition["function"]["name"] == "append_day":
+                        tools[i] = deepcopy(definition)
+                        tools[i]["function"]["parameters"]["required"].append("carry_exclusions")
             if step == 0 and draft.get("pending_days") and draft.get("preview_basis") is not None:
                 tools = [tool for tool in tools if tool["function"]["name"] == "resolve_preview"]
             msg = self.chat(messages, tools, on_delta=(lambda d, s=step: emit("delta", {"step": s, "text": d})) if live else None)

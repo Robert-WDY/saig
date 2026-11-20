@@ -40,3 +40,10 @@ def clocks(text):
         if m["period"] in ("中午","下午","傍晚","晚上") and hour<12:hour+=12
         if hour<24 and minute<60:result.append((m.start(),m.end(),f"{hour:02d}:{minute:02d}"))
     return result
+
+
+def explicit_clocks(text):
+    """Unqualified 一点/一时 can denote an amount or duration. Let the model
+    assign these a role; they do not independently prove an omitted clock."""
+    return [(a, b, time) for a, b, time in clocks(text)
+            if text[a:b].strip() not in ("一点", "一时") or text[b:b+1] == "钟"]
