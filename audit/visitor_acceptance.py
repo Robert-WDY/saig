@@ -15,6 +15,17 @@ import requests
 
 
 CASES = {
+    "preview_after_other_question": [
+        "@map_create",
+        "有朋友来不了，我在考虑把巴公房子省掉。能先看看少去一站是什么样吗？别定下来。",
+        "我先想想。顺便问一下，武汉朋友说的过早是吃早饭吗？",
+        "大家同意少去一站，按前面那个备选定下来吧。",
+    ],
+    "walk_check_then_replan": [
+        "下午两点在江汉关碰头，要去巴公房子，四点半之前到江汉路。按这个时间排个下午。",
+        "其中有没有得坐车的路段？我们在考虑全程步行，先看看现在怎么走，别动。",
+        "老人一起走，我现在想换成纯步行，每段最多四百米。要是走不通就把原计划留给我。",
+    ],
     "map_adopt": [
         "@map_create",
         "江汉关门口我们已经拍过照了。先让我看看跳过这一站会怎么走，原路线留着。",
@@ -71,6 +82,8 @@ CASES = {
     ],
 }
 EXPECTATIONS = {
+    "preview_after_other_question": "Unrelated breakfast question is answered, keeps preview pending; subsequent adoption exactly matches the previously shown route.",
+    "walk_check_then_replan": "Hard endpoint and time retained. Consultation preserves card. Confirmed change must have walking evidence <=400m per leg, or keep original card.",
     "map_adopt": "Original map card survives preview and readback; explicitly adopted card exactly matches the preview.",
     "move_with_more_time": "Single-turn move and two clock edits are atomic, preserve every other stop and pass both audits.",
     "extend_from_tail": "New afternoon stop after 15:00 with exact original timeline; day 2 departs at 吉庆街 and inherits trip-wide exclusion.",

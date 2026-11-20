@@ -15,6 +15,7 @@ from jsonschema import Draft202012Validator
 from knowledge import TOOLS as TOPICS
 from places import PLACES, ATLAS, region
 from planning import Invalid
+from quantities import clocks
 from trip_contract import GUIDES, trip_review, settings
 from datetime import date as _date, timedelta as _td
 from planning import HOURS, WEEKDAYS, WEEKDAY_CN, window_of, closed_on, evaluate, new_contract, reorder
@@ -266,6 +267,8 @@ read_fields.update(day=day_field, max_walk_m={"type": "integer", "minimum": 1}, 
 SCHEMAS["get_trip"]["description"] = "读取正式路线及交通明细。核对已有行程步行上限或交通方式时填 max_walk_m、allowed_modes，只核对不修改。"
 edit_fields = SCHEMAS["edit_trip"]["parameters"]["properties"]
 edit_fields["preview"] = {"type": "boolean", "description": "先看看、假设、不确定、只比较改动效果时为 true。从原卡计算，保留正式行程。"}
+edit_fields["reference_times"] = {"type": "array", "items": place_field,
+    "description": "仅引用用于对照或另一个问题的时刻原话，如旧的出发时间。需要生效的新时刻必须填对应 day 的动作。"}
 action_fields = edit_fields["actions"]["items"]["properties"]
 action_fields["type"]["enum"].append("set_transport")
 action_fields.update(allowed_modes=mode_field, max_walk_m={"type": "integer", "minimum": 1})
@@ -862,9 +865,28 @@ class Toolbox:
             self.mode = "edit"
         return {"ok": True, "summary_lines": day_lines(self.draft["days"])}
 
-    def edit_trip(self, day, actions, preview=False):
+    def edit_trip(self, day, actions, preview=False, reference_times=()):
         # Evaluate on an isolated snapshot. Only the final batch becomes one history entry.
         prior = self.draft.get("days", {})
+        times = {_clock(a["time"]) for a in actions if a.get("time")}
+        for a in actions:
+            if a["type"] in ("advance_start", "delay_start") and a.get("minutes") and str(a.get("day", day)) in prior:
+                start = prior[str(a.get("day", day))]["contract"]["start"]
+                times.add(start + (1 if a["type"] == "delay_start" else -1) * a["minutes"])
+        missing = []
+        for begin, finish, clock in clocks(self.utterance):
+            mention = self.utterance[begin:finish].strip()
+            minute = _clock(clock)
+            possible = {minute}
+            if not any(p in mention for p in ("凌晨","清晨","早上","上午","中午","下午","傍晚","晚上")) and minute < 720:
+                possible.add(minute + 720)
+            if not possible.intersection(times) and not any(
+                    quote in self.utterance and mention in quote for quote in reference_times):
+                missing.append(mention)
+        if missing:
+            return {"ok": False, "needs_binding": True, "unchanged": True,
+                    "error": "原话时刻尚未绑定：" + "、".join(missing) +
+                             "。请在同一次调用补齐对应日期和动作。如果只是原案对照时刻，逐字引用到 reference_times。"}
         trial = Toolbox(self.agent, deepcopy(self.draft), self.trace)
         cross = {"clear_day", "swap_days", "move_to_day"}
         groups = []
@@ -872,11 +894,11 @@ class Toolbox:
         # Evaluate moves against the requested time budget, regardless of clause order.
         # Repeated changes to a clock are relative to one another; retain their order.
         if any(a["type"] in ("move_to_day", "swap_days") for a in actions):
-            clocks = [(a.get("day", day), a["type"]) for a in actions
+            clock_actions = [(a.get("day", day), a["type"]) for a in actions
                       if a["type"] in ("set_start", "set_end")]
             def phase(action):
                 target, kind = action.get("day", day), action["type"]
-                if clocks.count((target, kind)) != 1 or str(target) not in prior:
+                if clock_actions.count((target, kind)) != 1 or str(target) not in prior:
                     return 1
                 if any(a.get("day", day) == target and a["type"] in ("delay_start", "advance_start") for a in actions):
                     return 1

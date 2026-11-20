@@ -214,14 +214,75 @@ def _rough_minutes(a, b):
     return 15 if km is None else (8 + km * 3.2 if km > 1.2 else km * 14)
 
 
-def reorder(c, stops, candidates=15):
+def _crowded_orders(c, stops, deadline):
+    """Earliest finish by visited subset and last stop. Rank offline candidates;
+    every complete order still goes through the real, time-dependent leg audit."""
+    if settings(c.get("mobility", {"rules": []})).get("出行日期"):
+        return []  # Do not fan out live timetable requests while exploring permutations.
+    windows = [window_of(c, n) for n in stops]
+    entries = [_hm(HOURS[n]["last_entry"]) if HOURS.get(n, {}).get("last_entry") else 1439 for n in stops]
+    durations = [c["durations"].get(n, PLACES[n]["minutes"]) for n in stops]
+    if any(closed_on(c, n) for n in stops):
+        return []
+    minutes = {}
+    for a in [c["origin"], *stops]:
+        for b in stops:
+            if monotonic() >= deadline:
+                return []
+            try:
+                minutes[a,b] = choose(a,b,c.get("mobility", {"rules":[]}),c["start"],{},True)["minutes"] if a else 0
+            except ValueError:
+                minutes[a,b] = float("inf")
+    states = {(0, c["origin"]): (c["start"], ())}
+    for _ in stops:
+        next_states = {}
+        for (mask, last), (clock, order) in states.items():
+            if monotonic() >= deadline:
+                return []
+            for i, name in enumerate(stops):
+                bit = 1 << i
+                if mask & bit:
+                    continue
+                lo, hi = windows[i]
+                arrival = max(clock + minutes[last,name], lo)
+                if arrival > entries[i]:
+                    continue
+                finish = arrival + durations[i]
+                key = (mask | bit, name)
+                if finish <= hi and (key not in next_states or finish < next_states[key][0]):
+                    next_states[key] = (finish, order + (name,))
+        states = next_states
+    return [list(order) for _, order in sorted(states.values())]
+
+
+def reorder(c, stops, candidates=15, diagnostics=None):
     """Re-plan the visiting order of a fixed set of stops: every permutation is scored with a quick
     straight-line simulation (origin, windows, waiting, destination); the best few are audited for real."""
-    if len(stops) > 8 or len(stops) < 2:
+    if len(stops) > 12 or len(stops) < 2:
         return None
     deadline = monotonic() + remaining(6)
+    if len(stops) >= 8:
+        feasible, later = [], []
+        for order in _crowded_orders(c, stops, deadline):
+            proof = evaluate(c, order)
+            if not proof["violations"]:
+                feasible.append((proof["arrival"], order, proof))
+            elif diagnostics is not None:
+                finish = proof["arrival"] + c["buffer"]
+                if c["end"] < finish < 1440 and not evaluate({**c, "end": finish}, order)["violations"]:
+                    later.append(finish)
+        if feasible:
+            _, order, proof = min(feasible, key=lambda row:row[0])
+            return order, proof
+        if later:
+            diagnostics["later_end"] = min(later)
+        if len(stops) > 8 or monotonic() >= deadline:
+            return None
     scored = []
+    score_deadline = deadline - min(1, max(0, deadline - monotonic()) / 3)
     for order in permutations(stops):
+        if monotonic() >= score_deadline:
+            break
         t, prev, idle, km, moving = c["start"], c["origin"], 0, 0.0, 0
         late = False
         for n in order:
@@ -259,10 +320,11 @@ def reorder(c, stops, candidates=15):
 def solve(c, prior, guide_order, add=(), remove=(), old_stops=(), replacements=(), preserve_guide_order=False, reoptimize=False):
     """Preserve relative order of surviving old stops (unless reoptimize). Minimize deleted/added objects first."""
     validate(c)
+    diagnostics = {}
     if reoptimize and prior:
         keep = [n for n in dict.fromkeys(prior + list(c["must"]) + list(add)) if n not in remove and n not in c["exclude"]]
         if not set(c["must"]) & set(remove):
-            found = reorder(c, keep)
+            found = reorder(c, keep, diagnostics=diagnostics)
             if found:
                 return found
     required=list(dict.fromkeys(c["must"]+list(add)))
@@ -334,6 +396,9 @@ def solve(c, prior, guide_order, add=(), remove=(), old_stops=(), replacements=(
         if best:
             break
     if not best:
+        if "later_end" in diagnostics:
+            hour, minute = divmod(diagnostics["later_end"], 60)
+            raise Invalid(f"按现有结束时间未找到可行排法。保留全部站点，已核验一条可在 {hour:02d}:{minute:02d} 前结束的路线；放宽结束时间需要游客确认。")
         detail="、".join(v for v,_ in reason.most_common(3))
         raise Invalid("当前约束无法排出可行行程："+(detail or "可用站点不足"))
     return best[1],best[2]

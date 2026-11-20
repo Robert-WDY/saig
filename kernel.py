@@ -17,6 +17,7 @@ from uuid import uuid4
 import requests
 
 from diagnostics import timed
+from quantities import clocks
 from kernel_tools import TOOL_DEFS, WRITE_TOOLS, Toolbox, day_lines, skill_index
 from limits import TurnExpired, charge_attempt, remaining
 from model import ModelError, deepseek_key
@@ -204,6 +205,10 @@ class Kernel:
         box = Toolbox(self.agent, draft, trace, utterance=q)
         continued = False
         messages = [{"role": "system", "content": system_prompt(draft)}]
+        if draft.get("days"):
+            mentions = [q[a:b].strip() for a, b, _ in clocks(q)]
+            if mentions:
+                messages[0]["content"] += "\n本轮原话里的时刻：" + "、".join(mentions) + "。若执行编辑，请逐项绑定日期和动作；只作对照的原话填 reference_times。"
         for t in k.get("turns", [])[-HISTORY_TURNS:]:
             messages += [{"role": "user", "content": t["user"]}, {"role": "assistant", "content": t["assistant"]}]
         messages.append({"role": "user", "content": q})
@@ -272,7 +277,8 @@ class Kernel:
                             if name == "append_day" and isinstance(args.get("must"), list):
                                 failed_plans[name] = [n for n in args["must"]
                                                       if isinstance(n, str) and box.named_in_request(n)]
-                            if name == "edit_trip" and isinstance(args.get("actions"), list) and len(args["actions"]) > 1:
+                            if (name == "edit_trip" and not result.get("needs_binding") and
+                                    isinstance(args.get("actions"), list) and len(args["actions"]) > 1):
                                 # A failed batch cannot become an unrequested partial write later in this turn.
                                 unavailable.update(WRITE_TOOLS - {"remember"})
                             error_key = (name, result.get("error", ""))

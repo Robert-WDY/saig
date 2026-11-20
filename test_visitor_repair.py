@@ -9,6 +9,7 @@ from agent import Agent
 from kernel_tools import Toolbox
 from kernel import Kernel
 from route_edits import edit_route
+from planning import Invalid, evaluate, new_contract, solve
 
 
 class VisitorRepairTests(unittest.TestCase):
@@ -49,6 +50,17 @@ class VisitorRepairTests(unittest.TestCase):
                        {"type": "move_to_day", "place": "黄鹤楼", "to_day": 2}])
         self.assertFalse(r["ok"])
         self.assertEqual(self.box.draft, before)
+
+    def test_unbound_clock_cannot_silently_disappear(self):
+        self.box.utterance = "第一天十点出发，第二天可以逛到晚上八点。"
+        before = deepcopy(self.box.draft)
+        first = {"type": "set_start", "time": "10:00"}
+        reply = self.edit([first])
+        self.assertTrue(reply["needs_binding"])
+        self.assertEqual(self.box.draft, before)
+        self.assertTrue(self.edit([first, {"day": 2, "type": "set_end", "time": "20:00"}])["ok"])
+        self.box.utterance = "原来十点出发的那天改到十一点。"
+        self.assertTrue(self.edit([{"type": "set_start", "time": "11:00"}], reference_times=["原来十点出发"])["ok"])
 
     def test_stale_preview_cannot_replace_newer_map_card(self):
         self.assertTrue(self.edit([{"type": "set_start", "time": "10:00"}], preview=True)["ok"])
@@ -104,3 +116,21 @@ class VisitorRepairTests(unittest.TestCase):
         kernel.turn(q, state, lambda *_: None)
         self.agent.execute_turn.assert_called_once()
         self.assertEqual(self.agent.execute_turn.call_args.args[0], q)
+
+    def test_nine_stop_transfer_proposes_a_verified_deadline(self):
+        from re import search
+        old = ["古琴台","龟山公园","武汉长江大桥","黄鹤楼","斗级营","户部巷","粮道街","武昌江滩"]
+        wanted = old + ["黎黄陂路"]
+        contract = {**new_contract(), "origin": "汉口站", "must": ["古琴台","黎黄陂路"]}
+        with self.assertRaises(Invalid) as failure:
+            solve(contract, old, [], add=wanted, reoptimize=True)
+        match = search(r"(\d\d):(\d\d)", str(failure.exception))
+        self.assertIsNotNone(match)
+        cutoff = int(match[1]) * 60 + int(match[2])
+        self.assertGreater(cutoff, contract["end"])
+        self.assertLess(cutoff, contract["end"] + 20)
+        confirmed = {**contract, "end": cutoff}
+        order, proof = solve(confirmed, old, [], add=wanted, reoptimize=True)
+        self.assertEqual(set(order), set(wanted))
+        self.assertFalse(proof["violations"])
+        self.assertEqual(proof, evaluate(confirmed, order))

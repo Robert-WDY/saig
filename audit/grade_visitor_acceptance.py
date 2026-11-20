@@ -14,6 +14,25 @@ def score(case, turns):
         return card.get("contract", {}).get("destination") == target and card["audit"]["arrival"] <= deadline
     def has_reference(r, id):
         return any(c.get("id") == id for c in r.get("citations", []))
+    if case == "preview_after_other_question":
+        proposed = results[1]["preview"]["1"]
+        return {"actual_preview": set(proposed["order"]) == {"江汉关","黎黄陂路"},
+                "unrelated_answer": any(term in results[2]["answer"] for term in ("早餐","早饭")),
+                "pending_after_question": results[2].get("has_pending_preview") is True,
+                "official_preserved": read_day(1) == read_day(2) == results[0]["cards"]["1"],
+                "same_preview_adopted": read_day(3) == proposed and not results[3]["has_pending_preview"]}
+    if case == "walk_check_then_replan":
+        old, final = read_day(0), read_day(2)
+        legs = final["audit"]["legs"]
+        unchanged = final == old
+        return {"original_route": old["contract"]["origin"] == "江汉关" and old["contract"]["start"] == 840
+                                  and "巴公房子" in old["order"] and arrival(old,"江汉路",990),
+                "read_only": old == read_day(1),
+                "preserved_appointment": arrival(final,"江汉路",990) and "巴公房子" in final["order"],
+                "limits_or_explicit_conflict": (unchanged and any(term in results[2]["answer"] for term in
+                    ("排不","保留","原样","保持","无法","没改","改不了","不能"))) or (bool(legs) and all(
+                    leg["mode"] == "walk" and leg.get("walk_m") is not None and leg["walk_m"] <= 400
+                    and not leg.get("estimated") for leg in legs))}
     if case == "map_adopt":
         original = results[0]["cards"]["1"]
         proposed = results[1]["preview"]["1"]
@@ -110,7 +129,7 @@ def main():
     parser.add_argument("folder", type=Path)
     args = parser.parse_args()
     cases = json.loads((args.folder / "manifest.json").read_text(encoding="utf8"))["cases"]
-    verdicts, latencies, decisions = {}, [], []
+    verdicts, latencies, decisions, calls_by_case = {}, [], [], {}
     for case, questions in cases.items():
         try:
             rows = json.loads((args.folder / (case + ".json")).read_text(encoding="utf8"))
@@ -120,13 +139,19 @@ def main():
                 if not row["question"].startswith("@"):
                     latencies.append(row["elapsed_s"])
                     decisions.append(sum(e["event"] == "step" for e in row["events"]))
+                    calls_by_case.setdefault(case, []).append(row["result"].get("model_calls_this_request"))
             checks = score(case, rows)
+            checks["responses_complete"] = all(
+                row["http"] == (409 if row["question"] == "@stale_map" else 200)
+                and (row["question"].startswith("@") or (row["result"].get("answer") and not row["result"].get("degraded")))
+                for row in rows)
             verdicts[case] = {"pass": all(checks.values()), "checks": checks}
-        except (ValueError, IndexError, KeyError, StopIteration, FileNotFoundError) as exc:
+        except (ValueError, IndexError, TypeError, KeyError, StopIteration, FileNotFoundError) as exc:
             verdicts[case] = {"pass": False, "ungraded": str(exc)}
     report = {"cases": verdicts, "complete_chat_turns": len(latencies),
               "chat_median_seconds": statistics.median(latencies) if latencies else None,
-              "chat_max_seconds": max(latencies, default=None), "stream_step_counts": decisions}
+              "chat_max_seconds": max(latencies, default=None), "stream_step_counts": decisions,
+              "model_calls_by_case": calls_by_case}
     (args.folder / "grades.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf8")
     return 0 if all(v["pass"] for v in verdicts.values()) else 1
 
