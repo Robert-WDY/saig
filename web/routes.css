@@ -92,3 +92,10 @@ body.map-expanded { overflow: hidden; }
 .geo-name.place::before { content: "·"; color: #71897d; margin-right: 3px; }
 .geo-name.visit { color: #183984; background: #fffcf1eb; border-radius: 3px; padding: 0 3px; }
 .geo-name.district { color: #677565; font-size: 18px; letter-spacing: .12em; }
+
+.map-toolbar { gap: 6px; }
+@media (max-width: 560px) {
+  .map-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; min-height: 48px; }
+  .map-toolbar::-webkit-scrollbar { display: none; }
+  .map-toolbar .btn { flex: none; }
+}

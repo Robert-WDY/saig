@@ -49,8 +49,9 @@
           </button>
         </div>
         <div class="hero-actions">
-        <button type="button" class="judge-tour fly-hero" id="fly-demo"><span aria-hidden="true">◆</span> 3D 飞览武汉<small>江豚带你从古琴台飞到东湖，登黄鹤楼远眺</small></button>
-        <button type="button" class="judge-tour" id="judge-tour"><span aria-hidden="true">▶</span> 评委快速体验<small>一键依次演示四项功能和改行程，约 1 分钟</small></button>
+          <button type="button" class="btn accent lg" id="fly-demo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>3D 飞览武汉</button>
+          <button type="button" class="btn onblue lg" id="judge-tour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/></svg>评委快速体验</button>
+          <p class="hero-note">飞览：江豚带你从古琴台飞到东湖，登黄鹤楼远眺。快速体验：一分钟看完四项功能。</p>
         </div>
       </div>
       <span class="illustration-credit">武汉城市插画 · AI 绘制 ｜ 江豚形象 · SAIG 官方素材</span>
@@ -64,8 +65,8 @@
             <div><h2 id="assistant-title">接待台</h2><p data-porpoise-status>在线 · 武汉、社区、行程、SAIG 都能问</p></div>
           </div>
           <div class="head-actions">
-            <button class="text-button voice-toggle" type="button" data-voice-toggle aria-pressed="true" hidden>语音播报</button>
-            <button id="reset" class="text-button" type="button"><span aria-hidden="true">＋</span> 新对话</button>
+            <button class="btn tool voice-toggle" type="button" data-voice-toggle aria-pressed="true" hidden>语音播报</button>
+            <button id="reset" class="btn tool" type="button" aria-label="新对话"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="label">新对话</span></button>
           </div>
         </header>
         <div class="chat-window" id="chat-window" tabindex="0" aria-label="对话记录">
@@ -90,7 +91,7 @@
             <button id="send" class="send" type="submit">发送 <span aria-hidden="true">↑</span></button>
           </form>
           <div class="compose-meta">
-            <button id="now-plan" class="now-plan" type="button" title="附近还有什么开着、接下来几小时怎么安排"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>临时安排</button>
+            <button id="now-plan" class="btn tool sm now-plan" type="button" title="附近还有什么开着、接下来几小时怎么安排"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>临时安排</button>
             <span id="progress" role="status"></span>
             <span>Enter 发送 · Shift + Enter 换行</span>
           </div>
@@ -101,9 +102,9 @@
         <header class="panel-head trip-head">
           <div class="head-title"><span class="board-mark" aria-hidden="true">路</span><div><h2 id="workspace-title">行程板</h2><p id="board-summary">查看路线和方案差异</p></div></div>
           <div class="board-actions">
-            <a id="city-plan-link" class="text-button map-button" href="/city">在武汉地图查看</a>
-            <a id="jump-map" class="text-button map-button" href="/routes">编辑路线</a>
-            <button id="save-comparison" class="text-button export-button" type="button" aria-live="polite" hidden>保存对比图 ↓</button>
+            <a id="city-plan-link" class="btn secondary sm" href="/city"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg>武汉地图</a>
+            <a id="jump-map" class="btn secondary sm" href="/routes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></svg>编辑路线</a>
+            <button id="save-comparison" class="btn secondary sm" type="button" aria-live="polite" hidden>保存对比图</button>
           </div>
         </header>
         <div class="tabs" aria-label="行程板视图" role="tablist">
@@ -112,7 +113,7 @@
         </div>
         <div id="board-map" class="board-map" hidden>
           <div id="board-map-canvas" aria-label="当天游览路线地图"></div>
-          <div class="board-map-bar"><strong id="board-map-label"></strong><button id="fly-plan" class="fly-button" type="button">▶ 3D 飞览</button><a id="board-map-open" href="/city">在武汉地图展开 ↗</a></div>
+          <div class="board-map-bar"><strong id="board-map-label"></strong><button id="fly-plan" class="btn accent sm" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>3D 飞览</button><a id="board-map-open" class="map-expand" href="/city">展开地图</a></div>
         </div>
         <div id="trip-takeaway" class="trip-takeaway" hidden>
           <div class="takeaway-head">
@@ -140,7 +141,7 @@
     <form method="dialog">
       <h2 id="reset-title">开始新对话？</h2>
       <p>确认后删除服务器上的本次对话、行程和记忆，同时清空本页。</p>
-      <div class="dialog-actions"><button value="cancel" class="text-button" autofocus>取消</button><button value="reset" class="send">开始新对话</button></div>
+      <div class="dialog-actions"><button value="cancel" class="btn secondary" autofocus>取消</button><button value="reset" class="btn primary">开始新对话</button></div>
     </form>
   </dialog>
 </body>

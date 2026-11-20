@@ -216,7 +216,7 @@ function appendInfoCards(bubble, result) {
     }
     copy.append(lines);
     const actions = node("div", "info-actions");
-    const open = node("a", "text-button", "在武汉地图查看 →");
+    const open = node("a", "btn secondary sm", "在武汉地图上看");
     open.href = "/city?" + new URLSearchParams({place: venue.place});
     actions.append(open, node("small", "", venue.note));
     copy.append(actions);
@@ -268,7 +268,7 @@ function renderReply(bubble, result) {
       row.append(node("b", "", day), node("span", "", stops.trim()));
       summary.append(row);
     }
-    summary.append(button("delivery", "在行程板查看每站时间与交通 →", () => {
+    summary.append(button("btn secondary sm plan-jump", "查看每站时间和交通", () => {
       get("workspace").scrollIntoView({behavior: "smooth", block: "start"});
     }));
     bubble.append(summary);
@@ -555,7 +555,7 @@ function emptyBoard(title, copy, action) {
   symbol.setAttribute("aria-hidden", "true");
   symbol.append(node("span"), node("span"), node("span"));
   el.append(symbol, node("h3", "", title), node("p", "", copy));
-  if (action) el.append(button("text-button", action.label, action.click));
+  if (action) el.append(button("btn primary", action.label.replace(/\s*[↗→]$/, ""), action.click));
   return el;
 }
 
@@ -839,13 +839,13 @@ function renderFollowups() {
   el.hidden = !!state.pending || !state.messages.length;
   if (el.hidden) return;
   const hasTwoDayPlan = state.plans.some(plan => plan.id !== "current" && Object.keys(plan.cards).length === 2);
-  if (!state.plans.length) el.append(button("chip", "规划并比较行程 ↗", () => fill(planPrompt)));
+  if (!state.plans.length) el.append(button("chip", "规划并比较行程", () => fill(planPrompt)));
   if (hasTwoDayPlan && !currentReply()?.deliverables?.some(item => item.kind === "revise")) {
-    el.append(button("chip", "调整两日游第 2 天 ↗", () => fill("两日游第二天想轻松点，下午四点要到汉口站。一日游照旧，再帮我比较一下。")));
+    el.append(button("chip", "调整两日游第 2 天", () => fill("两日游第二天想轻松点，下午四点要到汉口站。一日游照旧，再帮我比较一下。")));
   }
   el.append(
-    button("chip", "问数命 SPU 社区 ↗", () => fill(document.querySelector(".skill[data-skill='community']").dataset.prompt)),
-    button("chip", "问 SAIG 参赛 ↗", () => fill(document.querySelector(".skill[data-skill='saig']").dataset.prompt))
+    button("chip", "问数命 SPU 社区", () => fill(document.querySelector(".skill[data-skill='community']").dataset.prompt)),
+    button("chip", "问 SAIG 参赛", () => fill(document.querySelector(".skill[data-skill='saig']").dataset.prompt))
   );
 }
 
@@ -1035,7 +1035,7 @@ if (tourButton) tourButton.addEventListener("click", async () => {
   get("assistant").scrollIntoView({behavior: "smooth", block: "start"});
   try {
     for (const [index, prompt] of prompts.entries()) {
-      tourButton.textContent = `评委快速体验 · 第 ${index + 1}/${prompts.length} 步`;
+      tourButton.textContent = `演示中 ${index + 1}/${prompts.length}`;
       await sendText(prompt);
       if (state.pending) break;
       await new Promise(resolve => setTimeout(resolve, 1200));

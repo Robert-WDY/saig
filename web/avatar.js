@@ -120,7 +120,8 @@ const Receptionist = (() => {
       toggle.innerHTML = '<svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M3 7.5h3l4-3.5v12l-4-3.5H3z" fill="currentColor"/>' +
         (voiceOn ? '<path d="M13 7a4 4 0 0 1 0 6M15.5 4.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'
                  : '<path d="M13.5 8l4 4m0-4l-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>') +
-        '</svg>' + (voiceOn ? "语音播报" : "语音已关");
+        '</svg><span class="label">' + (voiceOn ? "语音播报" : "语音已关") + '</span>';
+      toggle.setAttribute("aria-label", voiceOn ? "语音播报：开" : "语音播报：关");
       toggle.hidden = !synth;
     }
   }

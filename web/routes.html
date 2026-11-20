@@ -24,11 +24,11 @@
     <section class="map-layout" aria-labelledby="route-title">
       <div class="map-shell">
         <div class="map-toolbar">
-          <button id="play-route" class="send" type="button" disabled>播放路线</button>
-          <button id="fit-route" class="text-button" type="button" disabled>查看全程</button>
-          <button id="city-view" class="text-button" type="button">武汉全貌</button>
-          <button id="expand-map" class="text-button" type="button" aria-pressed="false">展开大图</button>
-          <a class="text-button" href="/city">地图选点 ↗</a>
+          <button id="play-route" class="btn primary sm" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/></svg><span>播放路线</span></button>
+          <button id="fit-route" class="btn secondary sm" type="button" disabled>查看全程</button>
+          <button id="city-view" class="btn secondary sm" type="button">武汉全貌</button>
+          <button id="expand-map" class="btn secondary sm" type="button" aria-pressed="false">展开大图</button>
+          <a class="btn tool sm" href="/city">去武汉地图选点</a>
           <span id="route-progress" role="status"></span>
         </div>
         <div id="route-map" aria-label="武汉行程地图"></div>
@@ -48,15 +48,15 @@
         </div>
         <div id="route-editor" hidden>
           <label for="place-picker">添加游览站点</label>
-          <div class="edit-picker"><select id="place-picker"></select><button type="button" id="add-stop" class="text-button">添加</button></div>
+          <div class="edit-picker"><select id="place-picker"></select><button type="button" id="add-stop" class="btn secondary sm">添加</button></div>
           <div id="draft-stops"></div>
-          <div class="edit-actions" hidden id="edit-actions"><button class="send" type="button" id="apply-stops">应用并重排行程</button><button class="text-button" type="button" id="discard-stops">撤销改动</button></div>
+          <div class="edit-actions" hidden id="edit-actions"><button class="btn primary" type="button" id="apply-stops">应用并重排行程</button><button class="btn secondary" type="button" id="discard-stops">撤销改动</button></div>
           <p id="edit-feedback" role="status"></p>
         </div>
         <ol id="route-stops"></ol>
         <div id="route-empty" class="route-empty">
           <p>还没有行程。先请接待员排一条武汉路线。</p>
-          <a class="text-button map-button" href="/#assistant">去规划行程</a>
+          <a class="btn primary" href="/#assistant">去规划行程</a>
         </div>
       </section>
     </section>

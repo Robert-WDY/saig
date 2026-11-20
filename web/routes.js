@@ -267,7 +267,7 @@ function drawRoute(layer, count, style) {
 function stopPlayback() {
   if (timer !== null) clearTimeout(timer);
   timer = null;
-  play.textContent = "播放路线";
+  play.querySelector("span").textContent = "播放路线";
 }
 
 function playRoute() {
@@ -278,7 +278,7 @@ function playRoute() {
   if (!rows.some(row => row.coords)) return;
   map.closePopup();
   fitRoute();
-  play.textContent = "暂停播放";
+  play.querySelector("span").textContent = "暂停播放";
   let index = 0;
   function step() {
     playedLayer.clearLayers();

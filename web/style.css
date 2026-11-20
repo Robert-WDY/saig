@@ -448,3 +448,69 @@ body.flyover-open { overflow: hidden; }
 @media (max-width: 560px) { .flyover-head strong { font-size: 16px; } .flyover-caption { bottom: 76px; } .flyover-caption strong { font-size: 18px; } .flyover-view figcaption { font-size: 14px; white-space: normal; text-align: center; width: 86%; } }
 @media (prefers-reduced-motion: reduce) { .flyover-view.show img { animation: none; } }
 .stops li.free-day { color: var(--secondary); padding: 10px 0; }
+
+/* ── Button system ─────────────────────────────────────────────────────────
+   primary  solid ink-blue: the main action of a panel
+   accent   solid orange: the 3D flyover only (the page's one bold element)
+   onblue   solid paper on the blue hero
+   secondary paper with a hairline border: supporting actions
+   tool     no border, icon + label (label hidden on phones): panel tools
+   chip     tinted pill: suggested questions
+   Heights: sm 32, default 36, lg 44. One radius (6px) for every button. */
+.btn { --h: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--h); padding: 0 14px;
+  border: 1px solid transparent; border-radius: 6px; font: inherit; font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap;
+  text-decoration: none; cursor: pointer; transition: background-color .15s, border-color .15s, color .15s; }
+.btn svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.btn.sm { --h: 32px; padding: 0 10px; font-size: 12px; }
+.btn.sm svg { width: 14px; height: 14px; }
+.btn.lg { --h: 44px; padding: 0 18px; font-size: 15px; }
+.btn.lg svg { width: 18px; height: 18px; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .55; cursor: progress; }
+.btn.primary { background: var(--accent-dark); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent); }
+.btn.accent { background: var(--orange); color: #fff; }
+.btn.accent:hover:not(:disabled) { background: #d4471f; }
+.btn.onblue { background: var(--card); color: var(--accent-dark); }
+.btn.onblue:hover:not(:disabled) { background: #fff; }
+.btn.onblue:focus-visible, .btn.accent:focus-visible { outline-color: #fff; }
+.btn.secondary { background: var(--card); color: var(--ink); border-color: var(--line); font-weight: 500; }
+.btn.secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-dark); background: #fff; }
+.btn.tool { background: transparent; color: var(--secondary); font-weight: 500; padding: 0 8px; }
+.btn.tool:hover:not(:disabled) { background: var(--tint); color: var(--accent-dark); }
+.btn.tool[aria-pressed="false"] { color: #8a90a6; }
+.chip { min-height: 32px; padding: 0 12px; display: inline-flex; align-items: center; border: 0; border-radius: 999px; background: var(--tint); color: var(--accent-dark); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.chip:hover { background: #d3defa; }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Hero: two actions side by side, the explanation underneath (not inside the buttons). */
+.hero-actions { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.hero-note { flex-basis: 100%; margin: 0; font-size: 12px; color: #dfe7ff; }
+/* Panel headers */
+.head-actions { gap: 2px; }
+.board-actions { gap: 6px; }
+.board-map-bar { gap: 8px; padding: 5px 8px; }
+.board-map-bar .btn.accent { margin-left: auto; }
+.map-expand { font-size: 12px; color: var(--accent-dark); }
+.plan-jump { margin-top: 8px; }
+.compose-meta { align-items: center; }
+.now-plan { margin-right: auto; }
+/* Take-away row uses the secondary style */
+.takeaway-actions button { border-color: var(--line); border-radius: 6px; background: var(--card); font-weight: 500; }
+.takeaway-actions button:hover { background: #fff; border-color: var(--accent); color: var(--accent-dark); }
+.takeaway-date input { border-color: var(--line); border-radius: 6px; }
+.trip-takeaway { border-bottom-color: var(--line); }
+.connection { border: 0; padding: 6px 0; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 560px) {
+  .btn.tool .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .btn.tool { --h: 36px; padding: 0 9px; }
+  .hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .hero-actions .btn.lg { padding: 0 10px; font-size: 14px; }
+  .board-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .trip-head { flex-wrap: wrap; }
+}
+.hero-note { max-width: 560px; }
+.trip-takeaway { margin: 10px 15px; }
+@media (max-width: 560px) { .hero-note { grid-column: 1 / -1; } }

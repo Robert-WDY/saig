@@ -72,8 +72,10 @@ function open({stops, title = "3D 飞览", landmarks = [], say = null, onClose =
   document.body.append(root);
   document.body.classList.add("flyover-open");
 
-  const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const dpr = window.devicePixelRatio || 1;
+  // High-DPI screens already look smooth; skip MSAA there and cap the pixel ratio so phones keep 60 fps.
+  const renderer = new THREE.WebGLRenderer({antialias: dpr < 1.5, alpha: true, powerPreference: "high-performance"});
+  renderer.setPixelRatio(Math.min(1.5, dpr));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   stage.append(renderer.domElement);
   const scene = new THREE.Scene();
@@ -84,10 +86,10 @@ function open({stops, title = "3D 飞览", landmarks = [], say = null, onClose =
   controls.enableDamping = true; controls.maxPolarAngle = Math.PI * .45; controls.minDistance = 4; controls.maxDistance = 80;
   controls.enabled = false;
   const loader = new THREE.TextureLoader();
-  const tex = url => { const t = loader.load(url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t; };
+  const tex = (url, aniso = 1) => { const t = loader.load(url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(aniso, renderer.capabilities.getMaxAnisotropy()); return t; };
 
   // Diorama: the street map on a raised earth tile.
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshBasicMaterial({map: tex("/web/atlas/ground-3d.webp")}));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshBasicMaterial({map: tex("/web/atlas/ground-3d.webp", 4)}));
   ground.rotation.x = -Math.PI / 2; scene.add(ground);
   const sides = new THREE.Mesh(new THREE.BoxGeometry(W, 1.6, H), [
     new THREE.MeshBasicMaterial({color: 0xc98a45}), new THREE.MeshBasicMaterial({color: 0xc98a45}),
@@ -112,7 +114,7 @@ function open({stops, title = "3D 飞览", landmarks = [], say = null, onClose =
   }
   // Drifting clouds.
   const cloudTex = cloudTexture(), clouds = [];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 6; i++) {
     const c = new THREE.Sprite(new THREE.SpriteMaterial({map: cloudTex, transparent: true, opacity: .55, depthWrite: false, fog: false}));
     const s = 6 + Math.random() * 6; c.scale.set(s * 1.8, s, 1);
     c.position.set((Math.random() - .5) * W * 1.2, 9 + Math.random() * 5, (Math.random() - .5) * H * 1.2);
@@ -132,7 +134,7 @@ function open({stops, title = "3D 飞览", landmarks = [], say = null, onClose =
   }
   const curve = new THREE.CatmullRomCurve3(path, false, "centripetal");
   const segs = Math.max(60, stops.length * 60);
-  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, .09, 8, false), new THREE.MeshBasicMaterial({color: 0xe8562d}));
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, .09, 6, false), new THREE.MeshBasicMaterial({color: 0xe8562d}));
   tube.geometry.setDrawRange(0, 0); tube.renderOrder = 3; scene.add(tube);
   const total = tube.geometry.index.count;
   // Arc-length position of each stop on the curve.
@@ -157,7 +159,8 @@ function open({stops, title = "3D 飞览", landmarks = [], say = null, onClose =
   const lookAt = new THREE.Vector3(0, 0, 0);
   function frame() {
     if (!alive) return;
-    const dt = clock.getDelta(), t = clock.elapsedTime;
+    const dt = Math.min(.1, clock.getDelta()), t = clock.elapsedTime;
+    step(dt);
     for (const c of clouds) { c.position.x += c.userData.speed * dt; if (c.position.x > W) c.position.x = -W; }
     tube.geometry.setDrawRange(0, Math.floor(total * routeT / 3) * 3);
     const p = curve.getPointAt(Math.min(1, Math.max(0, guideT)));
@@ -170,22 +173,27 @@ function open({stops, title = "3D 飞览", landmarks = [], say = null, onClose =
 
   // Camera choreography.
   let paused = false, skip = false, run = 0;
-  const wait = async ms => { const end = performance.now() + ms; while (performance.now() < end) { if (!alive || skip) return; await sleep(paused ? 120 : 30); } };
-  async function fly(toPos, toLook, ms, from = {}) {
-    const p0 = camera.position.clone(), l0 = lookAt.clone();
-    const r0 = routeT, g0 = guideT, start = performance.now();
-    let elapsed = 0, last = start;
-    while (elapsed < ms && alive && !skip) {
-      const now = performance.now(); if (!paused) elapsed += now - last; last = now;
-      const k = ease(Math.min(1, elapsed / ms));
-      camera.position.lerpVectors(p0, toPos, k); lookAt.lerpVectors(l0, toLook, k);
-      if (from.route != null) routeT = r0 + (from.route - r0) * k;
-      if (from.guide != null) guideT = g0 + (from.guide - g0) * k;
-      await sleep(16);
-    }
-    camera.position.copy(toPos); lookAt.copy(toLook);
-    if (from.route != null) routeT = from.route;
-    if (from.guide != null) guideT = from.guide;
+  const wait = async ms => {
+    let left = ms, last = performance.now();
+    while (left > 0) { if (!alive || skip) return; await sleep(60); const now = performance.now(); if (!paused) left -= now - last; last = now; }
+  };
+  // One tween at a time, advanced by the render loop with the real frame time (no timers: smooth motion).
+  let tween = null;
+  function step(dt) {
+    if (!tween) return;
+    if (skip || !alive) { tween.k = 1; } else if (!paused) tween.k = Math.min(1, tween.k + dt * 1000 / tween.ms);
+    const k = ease(tween.k), w = tween;
+    camera.position.lerpVectors(w.p0, w.toPos, k); lookAt.lerpVectors(w.l0, w.toLook, k);
+    if (w.route != null) routeT = w.r0 + (w.route - w.r0) * k;
+    if (w.guide != null) guideT = w.g0 + (w.guide - w.g0) * k;
+    if (w.k >= 1) { tween = null; w.done(); }
+  }
+  function fly(toPos, toLook, ms, from = {}) {
+    if (tween) tween.done();
+    return new Promise(done => {
+      tween = {p0: camera.position.clone(), l0: lookAt.clone(), toPos, toLook, ms, k: 0, r0: routeT, g0: guideT,
+               route: from.route, guide: from.guide, done};
+    });
   }
   function overview() {
     const box = new THREE.Box3().setFromPoints(pts.length ? pts : [new THREE.Vector3()]);
