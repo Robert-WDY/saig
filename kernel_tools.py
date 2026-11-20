@@ -256,9 +256,10 @@ mode_field = {"type": "array", "uniqueItems": True, "minItems": 1, "items": {
 plan_fields.update(allowed_modes=mode_field, origin=place_field, destination=place_field)
 plan_fields["must"]["description"] = "仅列游客明确要求或指代的必去景点。泛指老街、历史、散步等写 interests，由排程器推荐具体站点。"
 atlas_topics = sorted({r["topic"] for r in ATLAS if r.get("topic")})
-plan_fields["exclusions"] = {"type": "array", "description": "每一条都区分仅当天和整个旅行。游客说今天/这天/留到另一天用 day；不想进博物馆用 topics 的展馆文博。",
+plan_fields["exclusions"] = {"type": "array", "description": "区分仅限一天(day)、当前排的这些天(planned_days)、今后新增的旅行日也要继续排除(future_days)。单日请求里的当天条件默认 day。",
     "items": {"type": "object", "additionalProperties": False, "required": ["scope"], "properties": {
-        "scope": {"enum": ["day", "trip"]}, "day": day_field,
+        "scope": {"enum": ["day", "planned_days", "future_days", "trip"]}, "day": day_field,
+        "source_quote": {"type": "string", "description": "future_days 必填，逐字引用游客表达长期偏好或整趟都排除的原话，包含范围。"},
         "places": {"type": "array", "items": place_field}, "topics": {"type": "array", "items": {"enum": atlas_topics}}}}}
 read_fields = SCHEMAS["get_trip"]["parameters"]["properties"]
 read_fields.update(day=day_field, max_walk_m={"type": "integer", "minimum": 1}, allowed_modes=mode_field)
@@ -273,7 +274,8 @@ SCHEMAS["multi_plan"]["parameters"]["properties"]["independent_options"] = {
     "type": "boolean", "description": "只有明确新建相互独立的方案才设 true。比较当前正式卡的假设改动请用 edit_trip 的 preview。"}
 SCHEMAS["resolve_preview"] = {"description": "查看、采用或放弃上一次试排，保留版本绑定。",
     "parameters": {"type": "object", "additionalProperties": False, "required": ["action"],
-                   "properties": {"action": {"enum": ["view", "adopt", "discard"]}}}}
+                   "properties": {"action": {"enum": ["view", "adopt", "discard", "continue"],
+                       "description": "看试排用 view，确认用试排用 adopt，决定用原案用 discard，无关新问题用 continue。"}}}}
 SCHEMAS["append_day"] = {
     "description": "在正式行程末尾新增一天，原有各天完整保留。origin 是这一天的实际出发点，destination 是明确指定的终点。",
     "parameters": {"type": "object", "additionalProperties": False, "required": ["day"], "properties": {
@@ -294,6 +296,7 @@ for definition in TOOL_DEFS:
     if definition["function"]["name"] == "plan_trip":
         params = deepcopy(definition["function"]["parameters"])
         del params["properties"]["avoid"]
+        params["properties"]["exclusions"]["items"]["properties"]["scope"]["enum"].remove("trip")
         definition["function"]["parameters"] = params
 VALIDATORS = {n: Draft202012Validator(s["parameters"]) for n, s in SCHEMAS.items()}
 
@@ -610,8 +613,15 @@ class Toolbox:
                          and r["name"] in PLACES and PLACES[r["name"]]["minutes"])
             if not names:
                 raise Invalid("排除条件缺少地点或地点分类。")
-            if rule["scope"] == "trip":
+            scope = rule["scope"]
+            if scope == "future_days" and self.utterance and not (
+                    rule.get("source_quote") and rule["source_quote"] in self.utterance):
+                raise Invalid("跨到未来新增日期的排除项需要对应的游客原话。只限当前已排日期请用 day 或 planned_days。")
+            if scope in ("trip", "future_days"):
                 global_bans.update(names)
+            elif scope == "planned_days":
+                for day in range(1, days + 1):
+                    local_bans.setdefault(day, set()).update(names)
             else:
                 day = rule.get("day", 1 if days == 1 else None)
                 if day is None or day > days:
@@ -832,6 +842,8 @@ class Toolbox:
                 "reminder": "回答时逐字给出改动的两天（以「第N天：」开头），一句话说明挪了什么。"}
 
     def resolve_preview(self, action):
+        if action == "continue":
+            return {"ok": True, "note": "选择保持待定，请继续处理游客的其他需求。"}
         pending = self.draft.get("pending_days")
         if not pending:
             raise Invalid("没有待选择的试排。")
@@ -1029,11 +1041,15 @@ class Toolbox:
             out["reminder"] += "free_time 是空出来的时间，顺口建议怎么用（如午饭、喝茶、附近逛逛）。"
         return out
 
-    def multi_plan(self, request, independent_options=False):
+    def multi_plan(self, request="", independent_options=False):
         if self.draft.get("days") and not self.draft.get("options") and not independent_options:
             raise Invalid("比较现有行程和试排，请用 edit_trip(preview=true)，它会以正式卡为原版。")
         # Alternatives and comparisons keep the reviewed multi-deliverable planner.
-        draft, res = self.agent.execute_turn(request, self.draft)
+        # Use the visitor's original text as the authority on scope. Model-written
+        # summaries sometimes turn recommended sights into new hard requirements.
+        draft, res = self.agent.execute_turn(self.utterance or request, self.draft, compiled={"mode": "compose"})
+        if not res.get("deliverables"):
+            return {"ok": False, "error": res.get("answer") or "未能交付方案。"}
         kernel_memory = self.draft.get("kernel")
         self.draft.clear()
         self.draft.update(draft)

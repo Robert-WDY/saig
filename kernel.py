@@ -42,7 +42,7 @@ PERSONA = """你是「江豚接待员」——武汉数命 SPU 城市 AI 接待�
 - 临时需求——「X 关门了/去不了，附近还有什么」「接下来 3 小时怎么安排」「我现在在 X，附近有什么」——先确认游客现在在哪：对话和记忆里都没有位置就只问一句「你现在在哪个地铁站或地标附近？」，不要猜。知道位置后用 nearby（找替代）或 plan_now（排接下来几小时），并用 remember 记下位置。
 - 来宾问下了飞机或火车怎么走、怎么去会场或酒店时，用 arrival_guide 给出地铁线路和换乘，再提醒进出站和候车要另留时间。
 - 游客的说法不标准（如「光谷」「省博」「武大」）时，用 find_place 对上目录名称再排程。
-- 每项限制绑定对象和日期。使用 exclusions，一个排除项对应一个 scope。只限某天、把景点留到另一天，scope=day 并填 day；只有全程排除用 scope=trip。类别用 topics，具体地点用 places。相对日期若指旅行中的下一天，以已存旅行日期为锚。
+- 每项限制绑定对象和日期。exclusions 的 scope 表达排完之后要不要继续继承：仅当天选 day 并填 day，当前已排日期选 planned_days；游客表达整趟或长期偏好时才选 future_days，source_quote 逐字引用范围和偏好。类别用 topics，具体地点用 places。相对日期若指旅行中的下一天，以已存旅行日期为锚。
 - 游客限定交通工具时把允许的方式完整传入 allowed_modes，集合地和目的地分别填 origin 和 destination。已存行程的交通修改用 set_transport。核对“能否走、是否超限”先用 get_trip 并传入审核上限或允许方式，读取真实 legs，逐段说明。缺少证明就说明无法确认。
 - 已有正式行程时，基于它做试排或和原方案比较必须用 edit_trip(preview=true)。不要用 multi_plan 重新生成原卡；后者用于独立方案或已保存的多方案。问查看、采用或保留原方案分别用 resolve_preview(view/adopt/discard)。一轮中所有相关修改放在一次 edit_trip 的 actions 中，每项可用 day 指明自己的日期。整体失败后报告冲突，不得擅自只实施一部分。
 - 条件不全时用合理默认值先做出来，再告诉游客可以怎么调整；只有缺「几天」这种关键信息时才追问，一次最多问一个问题。
@@ -72,7 +72,7 @@ def system_prompt(state):
         if dates:
             lines.append("正式旅行日期：" + json.dumps(dates, ensure_ascii=False))
         if state.get("pending_days"):
-            lines.append("正式行程另有一份尚未采纳的试排。")
+            lines.append("正式行程另有一份尚未采纳的试排。先用 resolve_preview 确定游客本轮的选择，再处理其他问题。选择原案就 discard，选择试排就 adopt，只看试排就 view。与选择无关用 continue，保持现状。")
         lines.append("游客当前的正式行程：\n" + "\n".join(day_lines(state["days"])))
     if k.get("earlier"):
         lines.append("更早聊过的话题：" + "；".join(k["earlier"][-10:]))
@@ -101,6 +101,8 @@ class Kernel:
         body = {"model": m.name, "messages": messages, "temperature": 0.3, "max_tokens": max_tokens, "stream": True}
         if tools:
             body["tools"] = tools
+            if len(tools) == 1 and tools[0]["function"]["name"] == "resolve_preview":
+                body["tool_choice"] = {"type": "function", "function": {"name": "resolve_preview"}}
         if m.deepseek:
             body["thinking"] = {"type": "disabled"}
         if not hasattr(self._http, "session"):
@@ -210,12 +212,15 @@ class Kernel:
         failures = {}
         unavailable = set()
         failed_plans = {}
+        completed_options = None
         for step in range(MAX_STEPS):
             emit("step", {"step": step})
             # Before any tool has run, a direct answer may still be sent back by the grounding guard,
             # so hold its text and show it only once accepted; after tools, stream it live.
             live = bool(trace)
             tools = [tool for tool in TOOL_DEFS if tool["function"]["name"] not in unavailable]
+            if step == 0 and draft.get("pending_days") and draft.get("preview_basis") is not None:
+                tools = [tool for tool in tools if tool["function"]["name"] == "resolve_preview"]
             msg = self.chat(messages, tools, on_delta=(lambda d, s=step: emit("delta", {"step": s, "text": d})) if live else None)
             calls = msg.get("tool_calls") or []
             if not calls:
@@ -249,6 +254,8 @@ class Kernel:
                 else:
                     if split_edit and name in WRITE_TOOLS - {"remember"}:
                         result = {"ok": False, "error": "这组修改尚未执行。请把各天的动作合并到一次 edit_trip，各动作可指定自己的 day。"}
+                    elif name == "multi_plan" and completed_options is not None:
+                        result = completed_options
                     elif name in unavailable:
                         result = {"ok": False, "error": "此操作已重复遇到同一约束冲突。请说明限制或提出替代。"}
                     elif failed_plans.get(name) and (not isinstance(args.get("must"), list)
@@ -277,6 +284,10 @@ class Kernel:
                                 failures.clear()
                                 failed_plans.clear()
                                 unavailable.clear()
+                                completed_options = None
+                            if name == "multi_plan" and all(row.get("status") == "passed" for row in box.deliverables):
+                                completed_options = result
+                                unavailable.add(name)
                         if name in ("append_day", "append_stops") and result.get("ok"):
                             continued = True
                         wrote = wrote or (name in WRITE_TOOLS and name != "remember" and result.get("ok"))
@@ -299,6 +310,7 @@ class Kernel:
         draft["turns"] = (draft.get("turns", []) + [{"user": q, "answer": answer, "offered_places": [], "sources": [c["id"] for c in citations]}])[-12:]
         mode = box.mode or "info"
         result = {"answer": answer, "mode": mode, "days": draft.get("days") or {}, "preview": box.preview,
+                  "has_pending_preview": bool(draft.get("pending_days")),
                   "preview_title": ("行程试排" if draft.get("pending_days") == box.preview else "临时安排") if box.preview else None,
                   "citations": citations, "facts": draft.get("facts", []), "trace": trace, "kernel": "v2"}
         if continued:

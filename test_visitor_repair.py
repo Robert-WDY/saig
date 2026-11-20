@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 from agent import Agent
 from kernel_tools import Toolbox
+from kernel import Kernel
 from route_edits import edit_route
 
 
@@ -79,3 +80,27 @@ class VisitorRepairTests(unittest.TestCase):
         self.assertIn("黄鹤楼", second["contract"]["exclude"])
         self.assertIn("湖北省博物馆", self.box.draft["trip_defaults"]["avoid"])
         self.assertEqual(self.box.draft["days"]["1"], self.cards["1"])
+
+    def test_deferred_category_is_available_even_without_naming_a_place(self):
+        box = Toolbox(self.agent, {}, [], utterance="这一天先不逛展馆。")
+        result = box.call("plan_trip", {"days": 1, "exclusions": [{"scope": "planned_days", "topics": ["展馆文博"]}]})
+        self.assertTrue(result["ok"], result)
+        original = deepcopy(box.draft["days"]["1"])
+        self.assertIn("湖北省博物馆", original["contract"]["exclude"])
+        self.assertTrue(box.call("append_day", {"day": 2})["ok"])
+        self.assertNotIn("湖北省博物馆", box.draft["days"]["2"]["contract"]["exclude"])
+        self.assertEqual(original, box.draft["days"]["1"])
+
+    def test_repeated_option_tool_uses_original_request_once(self):
+        kernel = Kernel(self.agent)
+        q = "一份一天的，一份两天的，比较一下。"
+        state = {"days": {}, "facts": [], "turns": []}
+        self.agent.execute_turn = Mock(return_value=(deepcopy(state), {
+            "deliverables": [{"status": "passed"}], "answer": "两份行程已比较。", "mode": "compose"}))
+        from test_kernel import call
+        kernel.chat = Mock(side_effect=[
+            {"role": "assistant", "content": "", "tool_calls": [call("multi_plan", {"request": "游客一定要去武大"}, i)]}
+            for i in range(2)] + [{"role": "assistant", "content": "两份行程已比较。"}])
+        kernel.turn(q, state, lambda *_: None)
+        self.agent.execute_turn.assert_called_once()
+        self.assertEqual(self.agent.execute_turn.call_args.args[0], q)

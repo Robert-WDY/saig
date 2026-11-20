@@ -45,6 +45,9 @@ def score(case, turns):
                   "deferred_visit_present": place in second.get("order", [])}
         if case == "day_scope":
             checks["departure_anchor"] = second.get("contract", {}).get("origin") == "江汉路"
+            scoped = set(first["contract"]["exclude"])
+            checks["day_one_category_only"] = ("湖北省博物馆" in scoped and not scoped.intersection(
+                second.get("contract", {}).get("exclude", [])))
         else:
             checks["excluded_from_first_day"] = place not in first["order"]
         return checks
@@ -61,7 +64,8 @@ def score(case, turns):
         morning_baselines = [c for c in options if c["contract"]["start"] == 540]
         return {"official_unchanged": first == read_day(1), "real_10am_preview": any(c["contract"]["start"] == 600 for c in variants),
                 "any_claimed_9am_baseline_matches_original": all(c["order"] == first["order"] and c["audit"]["stops"] == first["audit"]["stops"] for c in morning_baselines),
-                "original_after_declining": read_day(2) == first}
+                "original_after_declining": read_day(2) == first,
+                "decision_clears_pending": results[2].get("has_pending_preview") is False}
     if case == "map_to_chat":
         card = results[1]["cards"]["1"]
         order = card["order"]
